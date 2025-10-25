@@ -5,10 +5,10 @@
 -- =============================================
 
 -- 1. 允許所有人讀取頭像(因為是公開 bucket)
-CREATE POLICY "Public avatars are accessible to everyone"
-    ON storage.objects FOR SELECT
-    TO public
-    USING (bucket_id = 'avatars');
+-- CREATE POLICY "Public avatars are accessible to everyone"
+--     ON storage.objects FOR SELECT
+--     TO public
+--     USING (bucket_id = 'avatars');
 
 -- 2. 允許認證使用者上傳自己的頭像
 CREATE POLICY "Users can upload their own avatar"
