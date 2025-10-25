@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- 使用者主表
 CREATE TABLE public.users (
-                              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                               nickname VARCHAR(50) NOT NULL UNIQUE,
                               profile_picture_url TEXT,
                               avg_rating NUMERIC(3, 2) DEFAULT 0.00 CHECK (avg_rating >= 0 AND avg_rating <= 5),

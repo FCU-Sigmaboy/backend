@@ -137,3 +137,4 @@ dist
 /.idea/
 /.vscode/
 /package-lock.json
+/scripts/env-staging.sh
