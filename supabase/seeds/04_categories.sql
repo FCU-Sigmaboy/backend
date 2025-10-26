@@ -13,7 +13,7 @@ VALUES
 (6, 'bi bi-brush', '#ff6f61'),
 (7, 'bi bi-controller', '#fd7e14'),
 (8, 'bi bi-box', '#6c757d')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET icon = EXCLUDED.icon, color = EXCLUDED.color;
 
 -- 主分類
 INSERT INTO public.main_categories (id, name, created_at)
