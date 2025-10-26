@@ -2,6 +2,19 @@
 -- 模組二：產品目錄 - 主分類與子分類
 -- =============================================
 
+-- 新增主分類 icon 和 color
+INSERT INTO public.main_categories (id, icon, color)
+VALUES
+(1, 'bi bi-phone', '#007bff'),
+(2, 'bi bi-bag-heart', '#e83e8c'),
+(3, 'bi bi-house-door', '#28a745'),
+(4, 'bi bi-book', '#ffc107'),
+(5, 'bi bi-bicycle', '#17a2b8'),
+(6, 'bi bi-brush', '#ff6f61'),
+(7, 'bi bi-controller', '#fd7e14'),
+(8, 'bi bi-box', '#6c757d')
+ON CONFLICT (id) DO NOTHING;
+
 -- 主分類
 INSERT INTO public.main_categories (id, name, created_at)
 VALUES (1, '流行服飾 (Fashion Apparel)', now()),
