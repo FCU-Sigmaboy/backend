@@ -3,17 +3,18 @@
 -- =============================================
 
 -- 新增主分類 icon 和 color
-INSERT INTO public.main_categories (id, icon, color)
+INSERT INTO public.main_categories (id, name, icon, color)
 VALUES
-(1, 'bi bi-phone', '#007bff'),
-(2, 'bi bi-bag-heart', '#e83e8c'),
-(3, 'bi bi-house-door', '#28a745'),
-(4, 'bi bi-book', '#ffc107'),
-(5, 'bi bi-bicycle', '#17a2b8'),
-(6, 'bi bi-brush', '#ff6f61'),
-(7, 'bi bi-controller', '#fd7e14'),
-(8, 'bi bi-box', '#6c757d')
-ON CONFLICT (id) DO UPDATE SET icon = EXCLUDED.icon, color = EXCLUDED.color;
+    (1, '電子產品', 'bi bi-phone', '#007bff'),
+    (2, '服飾配件', 'bi bi-bag-heart', '#e83e8c'),
+    (3, '家居用品', 'bi bi-house-door', '#28a745'),
+    (4, '書籍文具', 'bi bi-book', '#ffc107'),
+    (5, '運動休閒', 'bi bi-bicycle', '#17a2b8'),
+    (6, '美妝保養', 'bi bi-brush', '#ff6f61'),
+    (7, '玩具遊戲', 'bi bi-controller', '#fd7e14'),
+    (8, '其他', 'bi bi-box', '#6c757d')
+ON CONFLICT (id) DO UPDATE SET icon = EXCLUDED.icon, color = EXCLUDED.color, name = EXCLUDED.name;
+
 
 -- 主分類
 INSERT INTO public.main_categories (id, name, created_at)
