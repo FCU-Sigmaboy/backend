@@ -115,32 +115,61 @@ v_sql := '
 
   -- 6. 動態附加 WHERE 條件
   -- *** 修改：距離篩選只有在 v_user_primary_location 存在時才有效 ***
-IF p_distance_range_km IS NOT NULL AND v_user_primary_location IS NOT NULL THEN
-    v_sql := v_sql || ' AND distance_km <= ' || quote_literal(p_distance_range_km);
-END IF;
-  -- (其他篩選條件保持不變)
-IF p_main_category_id IS NOT NULL THEN
-    v_sql := v_sql || ' AND main_category_id = ' || quote_literal(p_main_category_id);
-END IF;
-IF p_sub_category_id IS NOT NULL THEN
-    v_sql := v_sql || ' AND sub_category_id = ' || quote_literal(p_sub_category_id);
-END IF;
-IF p_user_id IS NOT NULL THEN
-    v_sql := v_sql || ' AND user_id = ' || quote_literal(p_user_id);
-END IF;
-IF p_keyword IS NOT NULL THEN
-    v_sql := v_sql || ' AND (title ILIKE ''%'' || ' || quote_literal(p_keyword) || ' || ''%'' OR tags @> ARRAY[' || quote_literal(p_keyword) || '])';
-END IF;
+  -- 需要追蹤參數索引，$1 已經被 v_user_primary_location 佔用
+  -- 建立一個陣列來存放 USING 參數
+  -- 參數順序必須與 SQL 佔位符一致
+  -- 初始化參數索引和參數陣列
+  DECLARE
+    v_param_idx INT := 2;
+    v_params ANYARRAY := ARRAY[v_user_primary_location];
+  BEGIN
+
+  IF p_distance_range_km IS NOT NULL AND v_user_primary_location IS NOT NULL THEN
+    v_sql := v_sql || ' AND distance_km <= $' || v_param_idx;
+    v_params := v_params || p_distance_range_km;
+    v_param_idx := v_param_idx + 1;
+  END IF;
+  IF p_main_category_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND main_category_id = $' || v_param_idx;
+    v_params := v_params || p_main_category_id;
+    v_param_idx := v_param_idx + 1;
+  END IF;
+  IF p_sub_category_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND sub_category_id = $' || v_param_idx;
+    v_params := v_params || p_sub_category_id;
+    v_param_idx := v_param_idx + 1;
+  END IF;
+  IF p_user_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND user_id = $' || v_param_idx;
+    v_params := v_params || p_user_id;
+    v_param_idx := v_param_idx + 1;
+  END IF;
+  IF p_keyword IS NOT NULL THEN
+    v_sql := v_sql || ' AND (title ILIKE ''%'' || $' || v_param_idx || ' || ''%'' OR tags @> ARRAY[$' || v_param_idx || '])';
+    v_params := v_params || p_keyword;
+    v_param_idx := v_param_idx + 1;
+  END IF;
 
   -- 7. 加上排序和分頁
-v_sql := v_sql || '
+  v_sql := v_sql || '
     ORDER BY ' || v_sort_column || ' ' || v_sort_dir || ' NULLS LAST' -- 將 NULL 排在後面
-    ' LIMIT ' || quote_literal(p_size) || '
-    OFFSET ' || quote_literal(v_offset);
+    ' LIMIT $' || v_param_idx || '
+    OFFSET $' || (v_param_idx + 1);
+  v_params := v_params || p_size || v_offset;
 
-  -- 8. 執行動態 SQL，傳入 $1 參數 (v_user_primary_location)
-RETURN QUERY EXECUTE v_sql
-    USING v_user_primary_location; -- *** 使用查找到的地點 ***
+  -- 8. 執行動態 SQL，傳入所有參數
+  RETURN QUERY EXECUTE v_sql
+    USING unpack_variadic(v_params);
+
+  END;
 
 END;
+
+-- Helper function to unpack array as variadic arguments for EXECUTE USING
+CREATE OR REPLACE FUNCTION unpack_variadic(anyarray)
+  RETURNS SETOF anyelement
+  LANGUAGE sql IMMUTABLE AS
+$$
+  SELECT unnest($1)
+$$;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
