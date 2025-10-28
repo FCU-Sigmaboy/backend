@@ -1,0 +1,29 @@
+{
+  "name": "map-function-frontend",
+  "version": "1.0.0",
+  "description": "地理定位功能前端實作 - Vue.js + Google Maps + Supabase",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fawmi/vue-google-maps": "^0.9.79",
+    "@supabase/supabase-js": "^2.39.0",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "keywords": [
+    "vue",
+    "geolocation",
+    "google-maps",
+    "supabase",
+    "postgis"
+  ],
+  "author": "",
+  "license": "MIT"
+}

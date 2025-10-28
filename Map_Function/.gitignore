@@ -1,0 +1,22 @@
+# Map_Function 模組 - Git 忽略檔案
+
+# 前端相關
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/package-lock.json
+
+# 編輯器
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# 日誌
+*.log
+logs/
+
+# 作業系統
+Thumbs.db
