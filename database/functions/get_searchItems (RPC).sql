@@ -95,21 +95,26 @@ v_sql := '
         i.listing_status = TRUE
     )
     SELECT
-      id AS item_id,
-      title,
-      image_urls[1] AS image_url,
-      price,
-      distance_km, -- *** 距離可能是 NULL ***
-      formatted_address,
-      created_at,
-      updated_at,
-      (SELECT COUNT(*) FROM public.favorites f WHERE f.item_id = items_with_distance.id) AS favorites_count,
+      iwd.id AS item_id,
+      iwd.title,
+      iwd.image_urls[1] AS image_url,
+      iwd.price,
+      iwd.distance_km, -- *** 距離可能是 NULL ***
+      iwd.formatted_address,
+      iwd.created_at,
+      iwd.updated_at,
+      COALESCE(fav.favorites_count, 0) AS favorites_count,
       json_build_object(
-        ''id'', user_id,
-        ''nickname'', nickname,
-        ''profile_picture_url'', profile_picture_url
+        ''id'', iwd.user_id,
+        ''nickname'', iwd.nickname,
+        ''profile_picture_url'', iwd.profile_picture_url
       ) AS "user"
-    FROM items_with_distance
+    FROM items_with_distance iwd
+    LEFT JOIN (
+        SELECT item_id, COUNT(*) AS favorites_count
+        FROM public.favorites
+        GROUP BY item_id
+    ) fav ON fav.item_id = iwd.id
     WHERE 1=1
   ';
 
