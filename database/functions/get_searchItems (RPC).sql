@@ -1,139 +1,146 @@
 -- ####################################################################
--- ### 獲取購買確認畫面資料 (RPC)
+-- ### 物品搜尋 (RPC)
 -- ####################################################################
 
-CREATE OR REPLACE FUNCTION public.get_item_for_purchase_confirmation(
-    p_item_id BIGINT -- (必填) 要確認的物品 ID
+-- *** 已更新為使用使用者主要地點計算距離 ***
+
+CREATE OR REPLACE FUNCTION public.search_items(
+    -- *** 移除了 p_user_latitude, p_user_longitude ***
+
+    -- 篩選參數 (全部可選)
+    p_distance_range_km INT DEFAULT NULL,
+    p_main_category_id INT DEFAULT NULL,
+    p_sub_category_id INT DEFAULT NULL,
+    p_keyword TEXT DEFAULT NULL,
+    p_user_id UUID DEFAULT NULL, -- 用於查看某特定使用者的物品
+
+    -- 分頁與排序
+    p_page INT DEFAULT 1,
+    p_size INT DEFAULT 20,
+    p_sort_by TEXT DEFAULT 'created_at',
+    p_sort_direction TEXT DEFAULT 'desc'
 )
-              RETURNS JSON -- 回傳包含物品和使用者點數的 JSON 物件
+-- 回傳 DTO 保持不變
+              RETURNS TABLE (
+    item_id BIGINT,
+    title TEXT,
+    image_url TEXT,
+    price INT,
+    distance_km NUMERIC,
+    formatted_address TEXT,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    favorites_count BIGINT,
+    "user" JSON
+)
               AS $$
               DECLARE
-              v_current_uid UUID := auth.uid();
-v_item items;
-v_profile profiles;
+              v_current_uid UUID := auth.uid(); -- *** 自動獲取當前登入者 ***
+v_user_primary_location GEOGRAPHY(Point, 4326);
+v_sql TEXT;
+v_offset INT;
+v_sort_column TEXT;
+v_sort_dir TEXT;
 BEGIN
     -- 1. 安全檢查：確認使用者已登入
     IF v_current_uid IS NULL THEN
-    RAISE EXCEPTION '使用者未登入';
+    RAISE EXCEPTION '使用者未登入，無法執行搜尋';
 END IF;
 
-  -- 2. 查找物品資料
-SELECT * INTO v_item FROM public.items WHERE id = p_item_id;
-IF v_item IS NULL THEN
-     RAISE EXCEPTION '物品不存在 (ID: %)', p_item_id;
-END IF;
-IF v_item.listing_status = FALSE THEN
-     RAISE EXCEPTION '物品目前無法索取';
-END IF;
-IF v_item.user_id = v_current_uid THEN
-     RAISE EXCEPTION '無法索取自己的物品';
+  -- 2. *** 新增：查找當前登入者的主要地點 ***
+SELECT coordinates INTO v_user_primary_location
+FROM public.locations
+WHERE user_id = v_current_uid AND is_primary = true
+LIMIT 1;
+
+-- (可選) 處理找不到主要地點的情況
+IF v_user_primary_location IS NULL THEN
+     -- 方案 A: 拋出錯誤
+     -- RAISE EXCEPTION '請先設定您的主要地點';
+     -- 方案 B: 允許搜尋，但距離相關功能失效 (distance_km 會是 NULL)
+     -- (下面的 SQL 查詢會因為 v_user_primary_location 是 NULL 而自動讓 ST_Distance 回傳 NULL)
+     RAISE NOTICE '找不到使用者的主要地點，距離計算將不可用';
 END IF;
 
-  -- 3. 查找當前使用者的 profile (點數)
-SELECT * INTO v_profile FROM public.profiles WHERE user_id = v_current_uid;
-IF v_profile IS NULL THEN
-      -- 這通常不應發生，除非使用者資料不完整
-      RAISE EXCEPTION '找不到使用者 Profile 資料';
-END IF;
+  -- 3. 處理分頁
+v_offset := (p_page - 1) * p_size;
 
-  -- 4. 組裝並回傳 DTO
-RETURN json_build_object(
-        'item', json_build_object(
-                'id', v_item.id,
-                'title', v_item.title,
-                'cover_image_url', v_item.image_urls[1],
-                'price', v_item.price
-                ),
-        'user', json_build_object(
-                'balance', v_profile.balance
-                )
-       );
-
+  -- 4. 安全地處理排序參數
+v_sort_dir := CASE WHEN p_sort_direction = 'asc' THEN 'ASC' ELSE 'DESC' END;
+v_sort_column := CASE
+      WHEN p_sort_by = 'distance' AND v_user_primary_location IS NOT NULL THEN 'distance_km' -- 只有找到地點才能按距離排
+      WHEN p_sort_by = 'created_at' THEN 'i.created_at'
+      WHEN p_sort_by = 'price' THEN 'i.price'
+      ELSE 'i.created_at'
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
 
+  -- 5. 建立基礎查詢 (CTE)
+v_sql := '
+    WITH items_with_distance AS (
+      SELECT
+        i.*,
+        u.nickname,
+        u.profile_picture_url,
+        sc.main_category_id,
+        l.formatted_address,
+        -- *** 修改：使用 v_user_primary_location (參數 $1) 計算距離 ***
+        -- 如果 $1 是 NULL，ST_Distance 會回傳 NULL
+        ROUND((ST_Distance(i.coordinates, $1) / 1000.0)::numeric, 3) AS distance_km
+      FROM
+        public.items i
+      LEFT JOIN public.users u ON i.user_id = u.id
+      LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+      LEFT JOIN public.locations l ON i.user_location_id = l.id
+      WHERE
+        i.listing_status = TRUE
+    )
+    SELECT
+      id AS item_id,
+      title,
+      image_urls[1] AS image_url,
+      price,
+      distance_km, -- *** 距離可能是 NULL ***
+      formatted_address,
+      created_at,
+      updated_at,
+      (SELECT COUNT(*) FROM public.favorites f WHERE f.item_id = items_with_distance.id) AS favorites_count,
+      json_build_object(
+        ''id'', user_id,
+        ''nickname'', nickname,
+        ''profile_picture_url'', profile_picture_url
+      ) AS "user"
+    FROM items_with_distance
+    WHERE 1=1
+  ';
 
--- ####################################################################
--- ### 執行購買 (RPC)
--- ####################################################################
-
-CREATE OR REPLACE FUNCTION public.execute_purchase(
-    p_item_id BIGINT -- (必填) 要購買的物品 ID
-)
-              RETURNS JSON -- 回傳交易結果
-              AS $$
-              DECLARE
-              v_receiver_id UUID := auth.uid(); -- 買家 (當前登入者)
-v_item items;
-v_giver_id UUID;
-v_receiver_profile profiles;
-v_transaction_id BIGINT;
-BEGIN
-    -- 1. 安全檢查：確認使用者已登入
-    IF v_receiver_id IS NULL THEN
-    RAISE EXCEPTION '使用者未登入';
+  -- 6. 動態附加 WHERE 條件
+  -- *** 修改：距離篩選只有在 v_user_primary_location 存在時才有效 ***
+IF p_distance_range_km IS NOT NULL AND v_user_primary_location IS NOT NULL THEN
+    v_sql := v_sql || ' AND distance_km <= ' || quote_literal(p_distance_range_km);
+END IF;
+  -- (其他篩選條件保持不變)
+IF p_main_category_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND main_category_id = ' || quote_literal(p_main_category_id);
+END IF;
+IF p_sub_category_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND sub_category_id = ' || quote_literal(p_sub_category_id);
+END IF;
+IF p_user_id IS NOT NULL THEN
+    v_sql := v_sql || ' AND user_id = ' || quote_literal(p_user_id);
+END IF;
+IF p_keyword IS NOT NULL THEN
+    v_sql := v_sql || ' AND (title ILIKE ''%'' || ' || quote_literal(p_keyword) || ' || ''%'' OR tags @> ARRAY[' || quote_literal(p_keyword) || '])';
 END IF;
 
-  -- 2. *** 關鍵：鎖定物品以防止併發問題 ***
-  --    SELECT ... FOR UPDATE 會鎖定該行，直到交易完成
-SELECT * INTO v_item FROM public.items WHERE id = p_item_id FOR UPDATE;
+  -- 7. 加上排序和分頁
+v_sql := v_sql || '
+    ORDER BY ' || v_sort_column || ' ' || v_sort_dir || ' NULLS LAST' -- 將 NULL 排在後面
+    ' LIMIT ' || quote_literal(p_size) || '
+    OFFSET ' || quote_literal(v_offset);
 
--- 3. 再次檢查物品狀態 (可能在確認畫面後被別人買走)
-IF v_item IS NULL THEN
-     RAISE EXCEPTION '物品不存在 (ID: %)', p_item_id;
-END IF;
-IF v_item.listing_status = FALSE THEN
-     RAISE EXCEPTION '物品已被索取或下架';
-END IF;
-v_giver_id := v_item.user_id; -- 賣家 ID
-IF v_giver_id = v_receiver_id THEN
-     RAISE EXCEPTION '無法索取自己的物品';
-END IF;
-
-  -- 4. 檢查買家點數
-SELECT * INTO v_receiver_profile FROM public.profiles WHERE user_id = v_receiver_id;
-IF v_receiver_profile.balance < v_item.price THEN
-     RAISE EXCEPTION '點數餘額不足';
-END IF;
-
-  -- *** 開始執行交易 ***
-
-  -- 5. 更新物品狀態為 "已下架"
-UPDATE public.items
-SET listing_status = FALSE, updated_at = NOW()
-WHERE id = p_item_id;
-
--- 6. 扣除買家點數
-UPDATE public.profiles
-SET balance = balance - v_item.price, updated_at = NOW()
-WHERE user_id = v_receiver_id;
-
--- 7. 增加賣家點數
-UPDATE public.profiles
-SET balance = balance + v_item.price, updated_at = NOW()
-WHERE user_id = v_giver_id;
-
--- 8. (可選) 更新碳排放量 (此處僅為範例，實際計算可能更複雜)
-UPDATE public.profiles
-SET carbon_saved_kg = carbon_saved_kg + COALESCE(v_item.carbon_value, 0), updated_at = NOW()
-WHERE user_id = v_receiver_id; -- 或根據您的規則更新 giver
-
--- 9. 插入交易紀錄
-INSERT INTO public.transactions (
-    item_id, giver_id, receiver_id, points_amount, carbon_amount_kg, transaction_status, completed_at
-)
-    VALUES (
-               p_item_id, v_giver_id, v_receiver_id, v_item.price, COALESCE(v_item.carbon_value, 0), '已完成', NOW()
-           )
-        RETURNING id INTO v_transaction_id;
-
--- 10. 回傳成功訊息和交易 ID
-RETURN json_build_object(
-        'success', true,
-        'message', '索取成功',
-        'transaction_id', v_transaction_id,
-        'new_balance', v_receiver_profile.balance - v_item.price -- 回傳更新後的點數
-       );
+  -- 8. 執行動態 SQL，傳入 $1 參數 (v_user_primary_location)
+RETURN QUERY EXECUTE v_sql
+    USING v_user_primary_location; -- *** 使用查找到的地點 ***
 
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
