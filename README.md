@@ -61,14 +61,14 @@ npx supabase start
 npx supabase db reset
 ```
 
+此命令會重置資料庫、套用所有遷移並載入測試資料。
+
 ### 測試訊息功能
 
-使用 Supabase Studio 或執行測試腳本：
-
-```bash
-npx supabase db reset
-# 然後在 Supabase Studio 中執行 supabase/tests/test_messaging_feature.sql
-```
+在 Supabase Studio (http://localhost:54323) 中執行測試腳本：
+- 開啟 SQL Editor
+- 載入 `supabase/tests/test_messaging_feature.sql`
+- 執行測試腳本驗證功能
 
 ## 開發
 
