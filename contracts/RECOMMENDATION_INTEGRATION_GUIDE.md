@@ -600,7 +600,7 @@ const getCachedRecommendations = async () => {
 
 ## 相關文檔
 
-- [推薦系統提案](../contracts/USER_PREFERENCE_RECOMMENDATION_SYSTEM.md)
+- [推薦系統提案](./USER_PREFERENCE_RECOMMENDATION_SYSTEM.md)
 - [Edge Functions 文檔](../supabase/functions/README.md)
 - [資料庫架構](../supabase/migrations/)
 - [Supabase 官方文檔](https://supabase.com/docs)

@@ -72,11 +72,28 @@ END $$;
 DO $$
 DECLARE
     v_user_id UUID;
+    v_function_exists BOOLEAN;
 BEGIN
+    -- Check if calculate_user_preferences function exists
+    SELECT EXISTS (
+        SELECT 1 FROM pg_proc 
+        WHERE proname = 'calculate_user_preferences'
+    ) INTO v_function_exists;
+    
+    IF NOT v_function_exists THEN
+        RAISE WARNING 'calculate_user_preferences function does not exist, skipping preference calculation';
+        RETURN;
+    END IF;
+    
     FOR v_user_id IN (SELECT DISTINCT user_id FROM user_interactions LIMIT 3)
     LOOP
-        PERFORM calculate_user_preferences(v_user_id);
-        RAISE NOTICE 'Calculated preferences for user %', v_user_id;
+        BEGIN
+            PERFORM calculate_user_preferences(v_user_id);
+            RAISE NOTICE 'Calculated preferences for user %', v_user_id;
+        EXCEPTION
+            WHEN OTHERS THEN
+                RAISE WARNING 'Failed to calculate preferences for user %: %', v_user_id, SQLERRM;
+        END;
     END LOOP;
 END $$;
 
@@ -89,35 +106,60 @@ DO $$
 DECLARE
     v_item_id BIGINT;
     v_similar_items RECORD;
+    v_function_exists BOOLEAN;
+    v_count INTEGER := 0;
 BEGIN
+    -- Check if get_similar_items function exists
+    SELECT EXISTS (
+        SELECT 1 FROM pg_proc 
+        WHERE proname = 'get_similar_items'
+    ) INTO v_function_exists;
+    
+    IF NOT v_function_exists THEN
+        RAISE WARNING 'get_similar_items function does not exist, skipping similarity cache generation';
+        RETURN;
+    END IF;
+    
     FOR v_item_id IN (SELECT id FROM items WHERE listing_status = true LIMIT 20)
     LOOP
-        -- 使用 get_similar_items 函數找相似物品
-        FOR v_similar_items IN 
-            SELECT * FROM get_similar_items(v_item_id, 5)
-        LOOP
-            -- 插入快取
-            INSERT INTO item_similarity_cache (
-                item_id,
-                similar_item_id,
-                similarity_score,
-                similarity_type,
-                calculated_at
-            ) VALUES (
-                v_item_id,
-                v_similar_items.item_id,
-                v_similar_items.similarity_score,
-                v_similar_items.similarity_reason,
-                NOW()
-            )
-            ON CONFLICT (item_id, similar_item_id, similarity_type) 
-            DO UPDATE SET
-                similarity_score = EXCLUDED.similarity_score,
-                calculated_at = EXCLUDED.calculated_at;
-        END LOOP;
-        
-        RAISE NOTICE 'Cached similarity for item %', v_item_id;
+        BEGIN
+            -- 使用 get_similar_items 函數找相似物品
+            FOR v_similar_items IN 
+                SELECT * FROM get_similar_items(v_item_id, 5)
+            LOOP
+                v_count := v_count + 1;
+                -- 插入快取
+                INSERT INTO item_similarity_cache (
+                    item_id,
+                    similar_item_id,
+                    similarity_score,
+                    similarity_type,
+                    calculated_at
+                ) VALUES (
+                    v_item_id,
+                    v_similar_items.item_id,
+                    v_similar_items.similarity_score,
+                    v_similar_items.similarity_reason,
+                    NOW()
+                )
+                ON CONFLICT (item_id, similar_item_id, similarity_type) 
+                DO UPDATE SET
+                    similarity_score = EXCLUDED.similarity_score,
+                    calculated_at = EXCLUDED.calculated_at;
+            END LOOP;
+            
+            RAISE NOTICE 'Cached similarity for item %', v_item_id;
+        EXCEPTION
+            WHEN OTHERS THEN
+                RAISE WARNING 'Failed to cache similarity for item %: %', v_item_id, SQLERRM;
+        END;
     END LOOP;
+    
+    IF v_count > 0 THEN
+        RAISE NOTICE 'Generated % similarity cache entries', v_count;
+    ELSE
+        RAISE WARNING 'No similarity cache entries generated';
+    END IF;
 END $$;
 
 -- =============================================
