@@ -7,10 +7,11 @@
 -- *** 修正 42702 歧義錯誤 ***
 -- *** 修正 RETURNS TABLE VARCHAR(50) ***
 
--- 步驟 1: (必須) 刪除舊函式，因為我們要變更回傳結構
-DROP FUNCTION IF EXISTS public.search_items(INT, INT, INT, TEXT, UUID, INT, INT, TEXT, TEXT);
+-- 步驟 1: 刪除舊函式
+-- PostgreSQL 的 CREATE OR REPLACE FUNCTION 語法非常方便，但它有一個嚴格的限制：您不能用它來修改函式的回傳類型（或參數類型）。
 
--- 步驟 2: 建立最終的、包含除錯欄位和權限修正的函式
+DROP FUNCTION public.search_items(INT, INT, INT, TEXT, UUID, INT, INT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
     p_main_category_id INT DEFAULT NULL,
@@ -22,7 +23,6 @@ CREATE OR REPLACE FUNCTION public.search_items(
     p_sort_by TEXT DEFAULT 'created_at',
     p_sort_direction TEXT DEFAULT 'desc'
 )
--- *** 修正 42804 + 新增 Debug 欄位 ***
               RETURNS TABLE (
     item_id BIGINT,
     title VARCHAR(50),
@@ -33,11 +33,10 @@ CREATE OR REPLACE FUNCTION public.search_items(
               created_at TIMESTAMPTZ,
               updated_at TIMESTAMPTZ,
               favorites_count BIGINT,
-              "user" JSON,
-              debug_user_location_wkb TEXT, -- *** 新增 Debug 欄位 ***
-              debug_item_location_wkb TEXT  -- *** 新增 Debug 欄位 ***
+              "user" JSON
               )
--- *** 關鍵修正：加入 SECURITY DEFINER 以繞過 RLS ***
+              -- LANGUAGE plpgsql STABLE
+              -- *** 關鍵修正：從 STABLE 改為 SECURITY DEFINER ***
               LANGUAGE plpgsql STABLE SECURITY DEFINER
               AS $$
               DECLARE
@@ -45,7 +44,7 @@ CREATE OR REPLACE FUNCTION public.search_items(
 v_user_primary_location GEOGRAPHY(Point,4326);
 v_offset INT;
 BEGIN
-    -- 1. 獲取主要地點
+    -- 1. 安全檢查 & 獲取主要地點
     IF v_current_uid IS NULL THEN
         RAISE EXCEPTION '使用者未登入，無法執行搜尋';
 END IF;
@@ -56,13 +55,15 @@ WHERE user_id = v_current_uid AND is_primary = true
 LIMIT 1;
 
 IF v_user_primary_location IS NULL THEN
-        RAISE NOTICE '找不到使用者的主要地點，距離計算將不可用';
+        RAISE EXCEPTION '找不到使用者的主要地點，距離計算將不可用';
 END IF;
 
     -- 2. 計算 offset
 v_offset := (p_page - 1) * p_size;
 
     -- 3. 根據排序方向和欄位執行不同的查詢
+    --    *** 修正：為 favorites 子查詢加上別名 'f' ***
+
 IF LOWER(p_sort_direction) = 'asc' THEN
         IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
             RETURN QUERY
@@ -70,11 +71,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    -- *** 新增 Debug 欄位 ***
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -93,10 +92,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -115,10 +113,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -139,10 +136,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -161,10 +157,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -183,10 +178,9 @@ SELECT
     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
     l.formatted_address, i.created_at, i.updated_at,
+    -- *** 修正 42702 ***
     (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
-    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user",
-    ST_AsText(v_user_primary_location) AS debug_user_location_wkb,
-    ST_AsText(l.coordinates) AS debug_item_location_wkb
+    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
 FROM public.items i
          LEFT JOIN public.users u ON i.user_id = u.id
          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
@@ -206,4 +200,6 @@ $$;
 
 -- *** 重要：為 items.tags 建立 GIN 索引以加速標籤搜尋 ***
 CREATE INDEX IF NOT EXISTS idx_items_tags ON public.items USING GIN (tags);
+
+-- (其他 RLS 政策和函式保持不變)
 
