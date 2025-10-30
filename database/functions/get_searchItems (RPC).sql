@@ -55,7 +55,7 @@ BEGIN
     LIMIT 1;
 
     IF v_user_primary_location IS NULL THEN
-        RAISE NOTICE '找不到使用者的主要地點，距離計算將不可用';
+        RAISE EXCEPTION '找不到使用者的主要地點，距離計算將不可用';
     END IF;
 
     -- 2. 計算 offset
