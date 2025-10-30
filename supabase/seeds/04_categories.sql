@@ -2,80 +2,77 @@
 -- 模組二：產品目錄 - 主分類與子分類
 -- =============================================
 
--- 新增主分類 icon 和 color
+-- 新增或更新主分類 icon 和 color
 INSERT INTO public.main_categories (id, name, icon, color)
 VALUES
-    (1, '電子產品', 'bi bi-phone', '#007bff'),
-    (2, '服飾配件', 'bi bi-bag-heart', '#e83e8c'),
-    (3, '家居用品', 'bi bi-house-door', '#28a745'),
-    (4, '書籍文具', 'bi bi-book', '#ffc107'),
-    (5, '運動休閒', 'bi bi-bicycle', '#17a2b8'),
-    (6, '美妝保養', 'bi bi-brush', '#ff6f61'),
-    (7, '玩具遊戲', 'bi bi-controller', '#fd7e14'),
-    (8, '其他', 'bi bi-box', '#6c757d')
-ON CONFLICT (id) DO UPDATE SET icon = EXCLUDED.icon, color = EXCLUDED.color, name = EXCLUDED.name;
+    (1, '流行服飾', 'bi bi-person-fill', '#ff6f61'),
+    (2, '鞋包配件', 'bi bi-bag', '#e83e8c'),
+    (3, '3C 電子', 'bi bi-phone', '#007bff'),
+    (4, '家電用品', 'bi bi-house-door', '#28a745'),
+    (5, '親子婦幼', 'bi bi-baby-carriage', '#6f42c1'),
+    (6, '生活娛樂', 'bi bi-controller', '#fd7e14')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon, color = EXCLUDED.color;
 
-
--- 主分類
+-- 主分類 (確保所有主分類都存在)
 INSERT INTO public.main_categories (id, name, created_at)
-VALUES (1, '流行服飾 (Fashion Apparel)', now()),
-       (2, '鞋包配件 (Shoes, Bags & Accessories)', now()),
-       (3, '3C 電子 (Electronics)', now()),
-       (4, '家電用品 (Home Appliances)', now()),
-       (5, '親子婦幼 (Mom & Baby)', now()),
-       (6, '生活娛樂 (Lifestyle & Hobbies)', now())
+VALUES (1, '流行服飾', now()),
+       (2, '鞋包配件', now()),
+       (3, '3C 電子', now()),
+       (4, '家電用品', now()),
+       (5, '親子婦幼', now()),
+       (6, '生活娛樂', now())
 ON CONFLICT (id) DO NOTHING;
 
 -- 子分類
 INSERT INTO public.sub_categories (id, main_category_id, name, default_carbon_value, created_at)
 VALUES
 -- 流行服飾
-(1, 1, '男性上著 (Men''s Tops)', 0.8, now()),
-(7, 1, '男性下著 (Men''s Bottoms)', 0.9, now()),
-(13, 1, '男性外套 (Men''s Outerwear)', 1.8, now()),
-(19, 1, '女性上著 (Women''s Tops)', 0.8, now()),
-(25, 1, '女性下著 (Women''s Bottoms)', 1.0, now()),
-(31, 1, '女性外套 (Women''s Outerwear)', 1.7, now()),
+(11, 1, '男性上著', 0.8, now()),
+(12, 1, '男性下著', 0.9, now()),
+(13, 1, '男性外套', 1.8, now()),
+(14, 1, '女性上著', 0.8, now()),
+(15, 1, '女性下著', 1.0, now()),
+(16, 1, '女性外套', 1.7, now()),
 
 -- 鞋包配件
-(2, 2, '運動鞋 (Sneakers)', 1.2, now()),
-(8, 2, '休閒鞋 (Casual Shoes)', 1.0, now()),
-(14, 2, '皮鞋 (Leather Shoes)', 1.3, now()),
-(20, 2, '靴子 (Boots)', 1.5, now()),
-(26, 2, '後背包 (Backpacks)', 0.9, now()),
-(32, 2, '帽子 (Hats)', 0.5, now()),
+(21, 2, '運動鞋', 1.2, now()),
+(22, 2, '休閒鞋', 1.0, now()),
+(23, 2, '皮鞋', 1.3, now()),
+(24, 2, '靴子', 1.5, now()),
+(25, 2, '後背包', 0.9, now()),
+(26, 2, '帽子', 0.5, now()),
 
 -- 3C 電子
-(3, 3, '手機 (Mobile Phones)', 2.5, now()),
-(9, 3, '平板電腦 (Tablets)', 2.0, now()),
-(15, 3, '筆記型電腦 (Laptops)', 3.5, now()),
-(21, 3, '桌上型電腦 (Desktop Computers)', 4.0, now()),
-(27, 3, '電腦螢幕 (Monitors)', 2.8, now()),
-(33, 3, '耳機 (Headphones)', 0.6, now()),
+(31, 3, '手機', 2.5, now()),
+(32, 3, '平板電腦', 2.0, now()),
+(33, 3, '筆記型電腦', 3.5, now()),
+(34, 3, '桌上型電腦', 4.0, now()),
+(35, 3, '電腦螢幕', 2.8, now()),
+(36, 3, '耳機', 0.6, now()),
 
 -- 家電用品
-(4, 4, '廚房家電 (Kitchen Appliances)', 3.0, now()),
-(10, 4, '季節家電 (Seasonal Appliances)', 2.8, now()),
-(16, 4, '清潔家電 (Cleaning Appliances)', 3.2, now()),
-(22, 4, '洗衣設備 (Laundry Appliances)', 4.5, now()),
-(28, 4, '個人護理家電 (Personal Care Appliances)', 1.5, now()),
-(34, 4, '電視 (Televisions)', 5.0, now()),
+(41, 4, '廚房家電', 3.0, now()),
+(42, 4, '季節家電', 2.8, now()),
+(43, 4, '清潔家電', 3.2, now()),
+(44, 4, '洗衣設備', 4.5, now()),
+(45, 4, '個人護理家電', 1.5, now()),
+(46, 4, '電視', 5.0, now()),
 
 -- 親子婦幼
-(5, 5, '孕婦用品 (Maternity)', 0.7, now()),
-(11, 5, '嬰幼兒服飾 (Baby & Kids'' Clothing)', 0.6, now()),
-(17, 5, '益智玩具 (Educational Toys)', 0.5, now()),
-(23, 5, '模型與玩偶 (Models & Dolls)', 0.4, now()),
-(29, 5, '外出用品 (Strollers & Gear)', 2.0, now()),
-(35, 5, '哺育用品 (Feeding & Nursing)', 0.8, now()),
+(51, 5, '孕婦用品', 0.7, now()),
+(52, 5, '嬰幼兒服飾', 0.6, now()),
+(53, 5, '益智玩具', 0.5, now()),
+(54, 5, '模型與玩偶', 0.4, now()),
+(55, 5, '外出用品', 2.0, now()),
+(56, 5, '哺育用品', 0.8, now()),
 
 -- 生活娛樂
-(6, 6, '運動用品 (Sports Equipment)', 1.5, now()),
-(12, 6, '戶外露營 (Camping & Hiking)', 2.2, now()),
-(18, 6, '樂器 (Musical Instruments)', 2.0, now()),
-(24, 6, '文具 (Stationery)', 0.3, now()),
-(30, 6, '寵物用品 (Pet Supplies)', 1.0, now()),
-(36, 6, '廚房用具 (Cookware)', 1.2, now())
+(61, 6, '運動用品', 1.5, now()),
+(62, 6, '戶外露營', 2.2, now()),
+(63, 6, '樂器', 2.0, now()),
+(64, 6, '文具', 0.3, now()),
+(65, 6, '寵物用品', 1.0, now()),
+(66, 6, '廚房用具', 1.2, now())
 ON CONFLICT (id) DO NOTHING;
 
 -- 重設序列值
