@@ -6,6 +6,11 @@
 -- *** 使用 IF/ELSIF 處理排序，已修正 JOIN ***
 -- *** 修正 42702 歧義錯誤 ***
 
+-- 步驟 1: 刪除舊函式
+-- PostgreSQL 的 CREATE OR REPLACE FUNCTION 語法非常方便，但它有一個嚴格的限制：您不能用它來修改函式的回傳類型（或參數類型）。
+
+DROP FUNCTION public.search_items(INT, INT, INT, TEXT, UUID, INT, INT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
     p_main_category_id INT DEFAULT NULL,
