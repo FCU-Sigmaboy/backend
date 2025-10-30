@@ -19,7 +19,7 @@ CREATE OR REPLACE FUNCTION public.search_items(
 )
               RETURNS TABLE (
     item_id BIGINT,
-    title TEXT,
+    title VARCHAR(50),
     image_url TEXT,
     price INT,
     distance_km NUMERIC,
