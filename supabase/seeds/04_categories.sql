@@ -2,26 +2,19 @@
 -- 模組二：產品目錄 - 主分類與子分類
 -- =============================================
 
--- 新增或更新主分類 icon 和 color
-INSERT INTO public.main_categories (id, name, icon, color)
+-- 主分類 (包含所有欄位的單一 INSERT 語句)
+INSERT INTO public.main_categories (id, name, icon, color, created_at)
 VALUES
-    (1, '流行服飾', 'bi bi-person-fill', '#ff6f61'),
-    (2, '鞋包配件', 'bi bi-bag', '#e83e8c'),
-    (3, '3C 電子', 'bi bi-phone', '#007bff'),
-    (4, '家電用品', 'bi bi-house-door', '#28a745'),
-    (5, '親子婦幼', 'bi bi-baby-carriage', '#6f42c1'),
-    (6, '生活娛樂', 'bi bi-controller', '#fd7e14')
-ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon, color = EXCLUDED.color;
-
--- 主分類 (確保所有主分類都存在)
-INSERT INTO public.main_categories (id, name, created_at)
-VALUES (1, '流行服飾', now()),
-       (2, '鞋包配件', now()),
-       (3, '3C 電子', now()),
-       (4, '家電用品', now()),
-       (5, '親子婦幼', now()),
-       (6, '生活娛樂', now())
-ON CONFLICT (id) DO NOTHING;
+    (1, '流行服飾', 'bi bi-person-fill', '#ff6f61', now()),
+    (2, '鞋包配件', 'bi bi-bag', '#e83e8c', now()),
+    (3, '3C 電子', 'bi bi-phone', '#007bff', now()),
+    (4, '家電用品', 'bi bi-house-door', '#28a745', now()),
+    (5, '親子婦幼', 'bi bi-baby-carriage', '#6f42c1', now()),
+    (6, '生活娛樂', 'bi bi-controller', '#fd7e14', now())
+ON CONFLICT (id) DO UPDATE SET 
+    name = EXCLUDED.name, 
+    icon = EXCLUDED.icon, 
+    color = EXCLUDED.color;
 
 -- 子分類
 INSERT INTO public.sub_categories (id, main_category_id, name, default_carbon_value, created_at)
