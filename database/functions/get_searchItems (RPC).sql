@@ -5,6 +5,8 @@
 -- *** 已更新為使用使用者主要地點計算距離 ***
 -- *** 使用 IF/ELSIF 處理排序，已修正 JOIN ***
 -- *** 修正 42702 歧義錯誤 ***
+-- *** 修正 RETURNS TABLE VARCHAR(50) ***
+
 
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
