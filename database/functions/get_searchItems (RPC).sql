@@ -35,7 +35,9 @@ CREATE OR REPLACE FUNCTION public.search_items(
                       favorites_count BIGINT,
                       "user" JSON
                   )
-    LANGUAGE plpgsql STABLE
+    -- LANGUAGE plpgsql STABLE
+    -- *** 關鍵修正：從 STABLE 改為 SECURITY DEFINER ***
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
 AS $$
 DECLARE
     v_current_uid UUID := auth.uid();
