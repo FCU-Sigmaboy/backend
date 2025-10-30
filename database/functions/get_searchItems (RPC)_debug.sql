@@ -1,11 +1,11 @@
 -- ####################################################################
--- ### 物品搜尋 (RPC) - 修正變數作用域問題
+-- ### 物品搜尋 (RPC) - 使用子查詢版本
 -- ####################################################################
 
 -- 步驟 1: 刪除舊函式
 DROP FUNCTION IF EXISTS public.search_items(INT, INT, INT, TEXT, UUID, INT, INT, TEXT, TEXT);
 
--- 步驟 2: 建立修正後的函式
+-- 步驟 2: 建立使用子查詢的版本
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
     p_main_category_id INT DEFAULT NULL,
@@ -35,7 +35,6 @@ CREATE OR REPLACE FUNCTION public.search_items(
 AS $$
 DECLARE
     v_current_uid UUID := auth.uid();  -- 取得當前使用者 ID
-    v_user_primary_location GEOGRAPHY(Point,4326);  -- 儲存使用者主要地點
     v_offset INT;  -- 分頁偏移量
 BEGIN
     -- ========================================
@@ -46,15 +45,14 @@ BEGIN
     END IF;
 
     -- ========================================
-    -- 2. 取得使用者的主要地點座標
+    -- 2. 檢查使用者是否有主要地點（用於提示）
     -- ========================================
-    SELECT coordinates INTO v_user_primary_location
-    FROM public.locations
-    WHERE user_id = v_current_uid AND is_primary = true
-    LIMIT 1;
-
-    -- 如果找不到主要地點，發出警告（但不中斷執行）
-    IF v_user_primary_location IS NULL THEN
+    -- 注意：這裡只是檢查，不儲存到變數
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.locations
+        WHERE user_id = v_current_uid AND is_primary = true
+    ) THEN
         RAISE NOTICE '找不到使用者的主要地點，距離計算將不可用';
     END IF;
 
@@ -66,24 +64,30 @@ BEGIN
     -- ========================================
     -- 4. 根據排序方式執行查詢
     -- ========================================
-    -- 使用 CTE (Common Table Expression) 來確保變數能正確傳遞
+    -- 使用子查詢直接在 SELECT 中取得使用者位置
 
     IF LOWER(p_sort_direction) = 'asc' THEN
         -- ============ ASC 排序 ============
-        IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
+        IF LOWER(p_sort_by) = 'distance' THEN
             -- 按距離升序排序
             RETURN QUERY
-                WITH user_location AS (
-                    -- 將函數變數轉換為查詢結果，確保能在後續查詢中使用
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    -- 使用 CTE 中的位置計算距離
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                          -- 子查詢取得使用者的主要地點座標
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -95,20 +99,33 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    -- Debug 欄位：使用者位置
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位：使用者位置（子查詢）
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     -- Debug 欄位：物品位置
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul  -- 關鍵：使用 CROSS JOIN 引入 CTE
                 WHERE i.listing_status = TRUE
-                  -- 距離篩選條件
+                  -- 距離篩選條件（使用子查詢）
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   -- 主分類篩選
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   -- 子分類篩選
@@ -118,21 +135,38 @@ BEGIN
                   -- 關鍵字搜尋（標題或標籤）
                   AND (p_keyword IS NULL OR
                        (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
-                ORDER BY distance_km ASC NULLS LAST, i.created_at DESC
+                -- 按距離排序（使用子查詢）
+                ORDER BY (
+                             SELECT ROUND((ST_Distance(
+                                                   l.coordinates,
+                                                   (SELECT coordinates
+                                                    FROM public.locations
+                                                    WHERE user_id = v_current_uid
+                                                      AND is_primary = true
+                                                    LIMIT 1)
+                                           ) / 1000.0)::numeric, 3)
+                         ) ASC NULLS LAST, i.created_at DESC
                 LIMIT p_size OFFSET v_offset;
 
         ELSIF LOWER(p_sort_by) = 'price' THEN
             -- 按價格升序排序
             RETURN QUERY
-                WITH user_location AS (
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -142,17 +176,31 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul
                 WHERE i.listing_status = TRUE
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
                   AND (p_user_id IS NULL OR i.user_id = p_user_id)
@@ -164,15 +212,22 @@ BEGIN
         ELSE
             -- 預設：按建立時間升序排序
             RETURN QUERY
-                WITH user_location AS (
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -182,17 +237,31 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul
                 WHERE i.listing_status = TRUE
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
                   AND (p_user_id IS NULL OR i.user_id = p_user_id)
@@ -204,18 +273,25 @@ BEGIN
 
     ELSE
         -- ============ DESC 排序（預設） ============
-        IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
+        IF LOWER(p_sort_by) = 'distance' THEN
             -- 按距離降序排序
             RETURN QUERY
-                WITH user_location AS (
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -225,37 +301,68 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul
                 WHERE i.listing_status = TRUE
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
                   AND (p_user_id IS NULL OR i.user_id = p_user_id)
                   AND (p_keyword IS NULL OR
                        (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
-                ORDER BY distance_km DESC NULLS LAST, i.created_at DESC
+                -- 按距離排序（使用子查詢）
+                ORDER BY (
+                             SELECT ROUND((ST_Distance(
+                                                   l.coordinates,
+                                                   (SELECT coordinates
+                                                    FROM public.locations
+                                                    WHERE user_id = v_current_uid
+                                                      AND is_primary = true
+                                                    LIMIT 1)
+                                           ) / 1000.0)::numeric, 3)
+                         ) DESC NULLS LAST, i.created_at DESC
                 LIMIT p_size OFFSET v_offset;
 
         ELSIF LOWER(p_sort_by) = 'price' THEN
             -- 按價格降序排序
             RETURN QUERY
-                WITH user_location AS (
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -265,17 +372,31 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul
                 WHERE i.listing_status = TRUE
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
                   AND (p_user_id IS NULL OR i.user_id = p_user_id)
@@ -287,15 +408,22 @@ BEGIN
         ELSE
             -- 預設：按建立時間降序排序
             RETURN QUERY
-                WITH user_location AS (
-                    SELECT v_user_primary_location AS location
-                )
                 SELECT
                     i.id AS item_id,
                     i.title,
                     i.image_urls[1] AS image_url,
                     i.price,
-                    ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) AS distance_km,
+                    -- 使用子查詢計算距離
+                    (
+                        SELECT ROUND((ST_Distance(
+                                              l.coordinates,
+                                              (SELECT coordinates
+                                               FROM public.locations
+                                               WHERE user_id = v_current_uid
+                                                 AND is_primary = true
+                                               LIMIT 1)
+                                      ) / 1000.0)::numeric, 3)
+                    ) AS distance_km,
                     l.formatted_address,
                     i.created_at,
                     i.updated_at,
@@ -305,17 +433,31 @@ BEGIN
                             'nickname', u.nickname,
                             'profile_picture_url', u.profile_picture_url
                     ) AS "user",
-                    ST_AsText(ul.location) AS debug_user_location_wkb,
+                    -- Debug 欄位
+                    (
+                        SELECT ST_AsText(coordinates)
+                        FROM public.locations
+                        WHERE user_id = v_current_uid
+                          AND is_primary = true
+                        LIMIT 1
+                    ) AS debug_user_location_wkb,
                     ST_AsText(l.coordinates) AS debug_item_location_wkb
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
                          LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
                          LEFT JOIN public.locations l ON i.location_id = l.id
-                         CROSS JOIN user_location ul
                 WHERE i.listing_status = TRUE
                   AND (p_distance_range_km IS NULL OR
-                       (ul.location IS NOT NULL AND
-                        ROUND((ST_Distance(l.coordinates, ul.location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                       (
+                           SELECT ROUND((ST_Distance(
+                                                 l.coordinates,
+                                                 (SELECT coordinates
+                                                  FROM public.locations
+                                                  WHERE user_id = v_current_uid
+                                                    AND is_primary = true
+                                                  LIMIT 1)
+                                         ) / 1000.0)::numeric, 3)
+                       ) <= p_distance_range_km)
                   AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
                   AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
                   AND (p_user_id IS NULL OR i.user_id = p_user_id)
@@ -342,3 +484,8 @@ CREATE INDEX IF NOT EXISTS idx_locations_coordinates ON public.locations USING G
 CREATE INDEX IF NOT EXISTS idx_items_listing_status ON public.items (listing_status);
 CREATE INDEX IF NOT EXISTS idx_items_user_id ON public.items (user_id);
 CREATE INDEX IF NOT EXISTS idx_items_sub_category_id ON public.items (sub_category_id);
+
+-- 為 locations 的查詢條件建立複合索引（重要！）
+CREATE INDEX IF NOT EXISTS idx_locations_user_primary
+    ON public.locations (user_id, is_primary)
+    WHERE is_primary = true;
