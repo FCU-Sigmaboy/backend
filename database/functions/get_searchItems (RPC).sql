@@ -1,9 +1,10 @@
 -- ####################################################################
+-- ### 物品搜尋 (RPC)
+-- ####################################################################
 
 -- *** 已更新為使用使用者主要地點計算距離 ***
 -- *** 使用 IF/ELSIF 處理排序，已修正 JOIN ***
--- 修正 favorites_count 計算方式 ***
-
+-- *** 修正 42702 歧義錯誤 ***
 
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
@@ -53,7 +54,7 @@ BEGIN
     v_offset := (p_page - 1) * p_size;
 
     -- 3. 根據排序方向和欄位執行不同的查詢
-    --    *** 改回使用相關子查詢計算 favorites_count ***
+    --    *** 修正：為 favorites 子查詢加上別名 'f' ***
 
     IF LOWER(p_sort_direction) = 'asc' THEN
         IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
@@ -62,8 +63,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
@@ -83,8 +84,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
@@ -104,8 +105,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
@@ -127,8 +128,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
@@ -148,8 +149,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
@@ -169,8 +170,8 @@ BEGIN
                     i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
                     ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
                     l.formatted_address, i.created_at, i.updated_at,
-                    -- *** 修正：使用相關子查詢 ***
-                    (SELECT count(*) FROM public.favorites WHERE item_id = i.id) AS favorites_count,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
                     json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
                 FROM public.items i
                          LEFT JOIN public.users u ON i.user_id = u.id
