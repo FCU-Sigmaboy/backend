@@ -3,12 +3,14 @@
 -- =============================================
 
 -- 首先刪除舊資料
+DELETE FROM public.items;
 DELETE FROM public.sub_categories;
 DELETE FROM public.main_categories;
 
 -- 重新設定序列
 ALTER SEQUENCE main_categories_id_seq RESTART WITH 1;
 ALTER SEQUENCE sub_categories_id_seq RESTART WITH 1;
+ALTER SEQUENCE items_id_seq RESTART WITH 1;
 
 -- 插入新的主分類
 INSERT INTO public.main_categories (id, name)
