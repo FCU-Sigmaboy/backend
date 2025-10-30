@@ -54,6 +54,9 @@ BEGIN
     WHERE user_id = v_current_uid AND is_primary = true
     LIMIT 1;
 
+
+    v_user_primary_location = null;
+
     IF v_user_primary_location IS NULL THEN
         RAISE EXCEPTION '找不到使用者的主要地點，距離計算將不可用';
     END IF;
