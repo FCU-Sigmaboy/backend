@@ -5,11 +5,11 @@
 -- 新增或更新主分類 icon 和 color
 INSERT INTO public.main_categories (id, name, icon, color)
 VALUES
-    (1, '流行服飾', 'bi bi-person-fill', '#ff6f61'),
+    (1, '流行服飾', 'bi bi-person-standing-dress', '#ff6f61'),
     (2, '鞋包配件', 'bi bi-bag', '#e83e8c'),
     (3, '3C 電子', 'bi bi-phone', '#007bff'),
     (4, '家電用品', 'bi bi-house-door', '#28a745'),
-    (5, '親子婦幼', 'bi bi-baby-carriage', '#6f42c1'),
+    (5, '親子婦幼', 'bi bi-person-hearts', '#6f42c1'),
     (6, '生活娛樂', 'bi bi-controller', '#fd7e14')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon, color = EXCLUDED.color;
 
