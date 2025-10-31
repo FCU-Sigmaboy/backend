@@ -58,58 +58,55 @@ async function loginBuyer() {
 }
 
 // ====== 查詢指定賣家物品 ======
-async function fetchSellerItems() {
+async function fetchSellerItems(sellerId) {
   const { data, error } = await supabase
     .from('items')
     .select('id, title, user_id')
-    .in('user_id', SELLER_IDS)
+    .eq('user_id', sellerId)
     .eq('listing_status', true)
-    .limit(10);
+    .limit(5);
   if (error || !data) {
-    console.error('❌ 查詢賣家物品失敗:', error?.message);
+    console.error(`❌ 查詢賣家 ${sellerId} 物品失敗:`, error?.message);
     return [];
   }
   return data;
 }
 
-// ====== RPC 查詢物品距離 ======
-async function fetchItemDistance(itemId) {
-  const { data, error } = await supabase.rpc('get_item_details_with_location', {
-    p_item_id: itemId,
-  }).maybeSingle();
-  if (error) {
-    console.error('❌ RPC error:', error.message);
-    return null;
+// ====== 呼叫 API 並顯示完整資料 ======
+async function testGetItemDetails(itemId, session) {
+  let headers = {};
+  if (session) {
+    headers = { Authorization: `Bearer ${session.access_token}` };
   }
-  return data;
+  const { data, error } = await supabase
+    .rpc('get_item_details_with_location', { p_item_id: itemId }, { headers });
+  if (error) {
+    console.error('❌ API 呼叫失敗:', error.message);
+    return;
+  }
+  console.log('✅ 物品ID:', itemId);
+  console.log('✅ API 回傳資料：', JSON.stringify(data, null, 2));
 }
 
 // ====== 主流程 ======
 (async () => {
-  console.log('【步驟 1】登入買家...');
-  const buyer = await loginBuyer();
-  if (!buyer) return;
-  console.log('✅ 買家:', buyer.email, buyer.id);
-
-  console.log('【步驟 2】查詢指定賣家物品...');
-  const items = await fetchSellerItems();
-  if (!items.length) {
-    console.log('❌ 無指定賣家物品可測試');
-    return;
-  }
-  console.log('✅ 指定賣家物品：', items.map(i => i.title).join(', '));
-
-  console.log('【步驟 3】依序查詢距離...');
-  for (const item of items) {
-    const result = await fetchItemDistance(item.id);
-    console.log('---------------------------------------------');
-    console.log(`物品: ${item.title} (ID: ${item.id})`);
-    if (result && result.distance_km !== undefined) {
-      console.log('distance_km:', result.distance_km);
-    } else {
-      console.log('無距離資訊（未登入或資料缺失）');
+  // 登入買家
+  const session = await loginBuyer();
+  // 依序查詢每個賣家現有物品
+  for (const sellerId of SELLER_IDS) {
+    console.log(`--- 查詢賣家 ${sellerId} 物品 ---`);
+    const items = await fetchSellerItems(sellerId);
+    if (items.length === 0) {
+      console.log('（無物品）');
+      continue;
+    }
+    for (const item of items) {
+      // 登入買家查詢
+      console.log('--- 登入買家查詢 ---');
+      await testGetItemDetails(item.id, session);
+      // 未登入查詢
+      console.log('--- 未登入查詢 ---');
+      await testGetItemDetails(item.id, null);
     }
   }
-  console.log('=============================================');
-  console.log('✅ 測試流程結束');
 })();
