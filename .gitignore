@@ -138,3 +138,5 @@ dist
 /.vscode/
 /package-lock.json
 /scripts/env-staging.sh
+/packages/package-lock.json
+.DS_Store
