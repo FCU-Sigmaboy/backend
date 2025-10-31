@@ -70,7 +70,7 @@ npm install
 複製 `.env.example` 為 `.env`：
 
 ```bash
-cp .env.example .env
+cp .env.staging.example .env.staging
 ```
 
 編輯 `.env` 並填入以下資訊：

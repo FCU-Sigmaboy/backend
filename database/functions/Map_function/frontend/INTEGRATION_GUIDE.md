@@ -129,9 +129,9 @@ curl -i --location --request POST \
 
 ```bash
 cd Map_Function/frontend
-cp .env.example .env
+cp .env.staging.example .env.staging
 
-# 編輯 .env 並填入：
+# 編輯 .env.staging 並填入：
 # - VITE_SUPABASE_URL
 # - VITE_SUPABASE_ANON_KEY
 # - VITE_GOOGLE_MAPS_API_KEY
