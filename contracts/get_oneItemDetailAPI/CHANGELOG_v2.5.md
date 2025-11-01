@@ -1,4 +1,4 @@
-# get_oneItemDetailAPI.js - 版本 2.5 更新日誌
+# get_ItemDetailsAPI.js - 版本 2.5 更新日誌
 
 **日期：** 2025-11-01  
 **版本：** v2.5（優化版）
@@ -206,9 +206,9 @@ if (result.isOwner) {
 
 ## 🔗 相關文件
 
-- **RPC 函數**：`/database/functions/get_oneItemDetail (RPC)_optimized.sql`
-- **API 實現**：`/contracts/get_oneItemDetailAPI.js`
-- **資料庫遷移**：`/supabase/migrations/20251101000000_get_oneItemDetail_RPC_optimized.sql`
+- **RPC 函數**：`/database/functions/get_ItemDetails (RPC)_optimized.sql`
+- **API 實現**：`/contracts/get_ItemDetailsAPI.js`
+- **資料庫遷移**：`/supabase/migrations/20251101000000_get_ItemDetails_RPC_optimized.sql`
 
 ---
 

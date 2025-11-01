@@ -342,7 +342,7 @@ await getItemDetails(id);
 
 ## 🔗 相關連結
 
-- [完整 API 文檔](./get_oneItemDetailAPI.js)
+- [完整 API 文檔](get_ItemDetailsAPI.js)
 - [版本更新日誌](./CHANGELOG_v2.5.md)
 - [RPC 函數文檔](../database/functions/get_oneItemDetail%20(RPC)_optimized.sql)
 
