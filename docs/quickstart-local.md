@@ -122,3 +122,5 @@ if (isProd) throw new Error('⛔ 禁止在 Production 進行此操作');
 npx supabase stop --no-backup
 docker volume prune
 ```
+
+如果你要，我可以把這份「快速部署本地測試」加到你正在看的文件頁面頂部，或新建 docs/[quickstart-local.md](http://quickstart-local.md)。
