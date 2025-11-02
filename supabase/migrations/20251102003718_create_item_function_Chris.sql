@@ -30,7 +30,7 @@ DECLARE
     v_new_item items;
 BEGIN
     IF v_current_uid IS NULL THEN
-        RAISE EXCEPTION 'User not logged in';
+        RAISE EXCEPTION '使用者未登入，無法刊登物品';
     END IF;
 
     IF p_condition NOT IN ('全新', '近全新', '良好', '普通', '需修理') THEN
