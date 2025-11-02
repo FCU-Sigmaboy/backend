@@ -34,7 +34,7 @@ BEGIN
     END IF;
 
     IF p_condition NOT IN ('全新', '近全新', '良好', '普通', '需修理') THEN
-        RAISE EXCEPTION 'Invalid condition value';
+        RAISE EXCEPTION '無效的物品狀況: %。有效值為：全新、近全新、良好、普通、需修理', p_condition;
     END IF;
 
     IF NOT EXISTS (
