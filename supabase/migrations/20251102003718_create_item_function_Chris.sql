@@ -86,4 +86,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON FUNCTION public.create_item(INT, BIGINT, TEXT, TEXT, VARCHAR, INT, NUMERIC, TEXT[], TEXT[])
-IS 'Create new item listing with validation';
+IS '建立新物品（刊登）：自動使用當前登入者的 user_id，並驗證 condition 值與 location 所有權。Creates a new item listing: automatically uses the current logged-in user''s user_id, validates the condition value, and checks location ownership.';
