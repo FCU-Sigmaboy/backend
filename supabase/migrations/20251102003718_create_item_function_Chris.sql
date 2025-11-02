@@ -41,7 +41,7 @@ BEGIN
         SELECT 1 FROM public.locations
         WHERE id = p_user_location_id AND user_id = v_current_uid
     ) THEN
-        RAISE EXCEPTION 'Invalid location or not owned by user';
+        RAISE EXCEPTION '無效的地點 ID 或該地點不屬於當前使用者';
     END IF;
 
     INSERT INTO public.items (
