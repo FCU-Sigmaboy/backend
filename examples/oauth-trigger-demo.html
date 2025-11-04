@@ -286,9 +286,9 @@
                         // 注意：實際應用中需要使用 Google Geocoding API 來取得 formatted_address
                         // Google Geocoding API 範例：
                         // const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}&language=zh-TW`
-                        // 這裡為了示範，使用模擬的台灣地址格式
+                        // 這裡為了示範，使用符合台灣地址格式的模擬地址
                         // 真實地址範例："台中市北屯區文心路四段123號"
-                        const mockAddress = `台中市北屯區文心路 (座標: ${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+                        const mockAddress = '台中市北屯區文心路四段100號';
                         
                         const { data: session } = await supabase.auth.getSession();
                         const token = session?.session?.access_token;
@@ -317,9 +317,10 @@
                         if (result.success) {
                             showSuccess('locationInfo', `
 位置已成功儲存！
-緯度: ${latitude}
-經度: ${longitude}
-地址: ${mockAddress}
+緯度: ${latitude.toFixed(6)}
+經度: ${longitude.toFixed(6)}
+模擬地址: ${mockAddress}
+（實際應用中應使用 Google Geocoding API 取得真實地址）
                             `.trim());
                         } else {
                             showError('locationInfo', '儲存位置失敗: ' + result.error);
@@ -430,16 +431,20 @@
                     // OAuth 回調後等待 Supabase 客戶端初始化
                     // 使用 Promise 方式等待而非固定延遲
                     await new Promise(resolve => {
-                        const checkInterval = setInterval(() => {
+                        let checkIntervalId = null;
+                        let timeoutId = null;
+                        
+                        checkIntervalId = setInterval(() => {
                             if (supabase) {
-                                clearInterval(checkInterval);
+                                clearInterval(checkIntervalId);
+                                if (timeoutId) clearTimeout(timeoutId);
                                 resolve();
                             }
                         }, 100);
                         
-                        // 最多等待 5 秒
-                        setTimeout(() => {
-                            clearInterval(checkInterval);
+                        // 最多等待 5 秒，確保清理 interval
+                        timeoutId = setTimeout(() => {
+                            if (checkIntervalId) clearInterval(checkIntervalId);
                             resolve();
                         }, 5000);
                     });

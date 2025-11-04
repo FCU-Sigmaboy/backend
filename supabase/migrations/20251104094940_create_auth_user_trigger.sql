@@ -90,14 +90,23 @@ BEGIN
 
   -- 使用正則表達式提取縣市和區/鄉/鎮/市
   -- 台灣地址格式：XXX市XXX區、XXX縣XXX鄉/鎮/市
+  -- 分兩種模式匹配：
+  -- 1. 直轄市：台北市、新北市、台中市、台南市、高雄市 + 區
+  -- 2. 縣：XXX縣 + 鄉/鎮/市
   matches := regexp_matches(
     address, 
-    '([台臺][北中南]市|[^市縣]*[縣市])([^區鄉鎮市]*[區鄉鎮市])'
+    '(台北市|新北市|[台臺]中市|[台臺]南市|高雄市|桃園市|基隆市|新竹市|嘉義市)([^區]+區)|([^縣]+縣)([^鄉鎮市]+[鄉鎮市])'
   );
   
   -- 如果匹配成功，組合縣市和區域
-  IF matches IS NOT NULL AND array_length(matches, 1) >= 2 THEN
-    result := matches[1] || matches[2];
+  IF matches IS NOT NULL THEN
+    -- 直轄市 + 區 的情況（第1和第2個捕獲組）
+    IF matches[1] IS NOT NULL AND matches[2] IS NOT NULL THEN
+      result := matches[1] || matches[2];
+    -- 縣 + 鄉/鎮/市 的情況（第3和第4個捕獲組）
+    ELSIF matches[3] IS NOT NULL AND matches[4] IS NOT NULL THEN
+      result := matches[3] || matches[4];
+    END IF;
   END IF;
 
   RETURN result;
