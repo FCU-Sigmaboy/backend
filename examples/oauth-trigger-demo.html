@@ -284,8 +284,11 @@
                     
                     try {
                         // 注意：實際應用中需要使用 Google Geocoding API 來取得 formatted_address
-                        // 這裡為了示範，使用模擬地址
-                        const mockAddress = `台中市北屯區 (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+                        // Google Geocoding API 範例：
+                        // const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}&language=zh-TW`
+                        // 這裡為了示範，使用模擬的台灣地址格式
+                        // 真實地址範例："台中市北屯區文心路四段123號"
+                        const mockAddress = `台中市北屯區文心路 (座標: ${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
                         
                         const { data: session } = await supabase.auth.getSession();
                         const token = session?.session?.access_token;
@@ -422,10 +425,28 @@
         // 監聽 auth 狀態變化
         if (window.supabase) {
             // 頁面載入時檢查 URL hash（OAuth 回調）
-            window.addEventListener('load', () => {
+            window.addEventListener('load', async () => {
                 if (window.location.hash) {
-                    // OAuth 回調後自動初始化
-                    setTimeout(checkSession, 1000);
+                    // OAuth 回調後等待 Supabase 客戶端初始化
+                    // 使用 Promise 方式等待而非固定延遲
+                    await new Promise(resolve => {
+                        const checkInterval = setInterval(() => {
+                            if (supabase) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 100);
+                        
+                        // 最多等待 5 秒
+                        setTimeout(() => {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }, 5000);
+                    });
+                    
+                    if (supabase) {
+                        await checkSession();
+                    }
                 }
             });
         }
