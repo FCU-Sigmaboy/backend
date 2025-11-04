@@ -429,24 +429,29 @@
             window.addEventListener('load', async () => {
                 if (window.location.hash) {
                     // OAuth 回調後等待 Supabase 客戶端初始化
-                    // 使用 Promise 方式等待而非固定延遲
+                    // 使用 Promise 方式等待而非固定延遲，並防止競態條件
                     await new Promise(resolve => {
                         let checkIntervalId = null;
                         let timeoutId = null;
+                        let resolved = false; // 防止多次 resolve
                         
-                        checkIntervalId = setInterval(() => {
-                            if (supabase) {
-                                clearInterval(checkIntervalId);
+                        const cleanup = () => {
+                            if (!resolved) {
+                                resolved = true;
+                                if (checkIntervalId) clearInterval(checkIntervalId);
                                 if (timeoutId) clearTimeout(timeoutId);
                                 resolve();
                             }
+                        };
+                        
+                        checkIntervalId = setInterval(() => {
+                            if (supabase) {
+                                cleanup();
+                            }
                         }, 100);
                         
-                        // 最多等待 5 秒，確保清理 interval
-                        timeoutId = setTimeout(() => {
-                            if (checkIntervalId) clearInterval(checkIntervalId);
-                            resolve();
-                        }, 5000);
+                        // 最多等待 5 秒
+                        timeoutId = setTimeout(cleanup, 5000);
                     });
                     
                     if (supabase) {
