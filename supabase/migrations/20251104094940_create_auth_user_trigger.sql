@@ -1,6 +1,14 @@
 -- =============================================
 -- 用戶 OAuth 註冊觸發器
 -- 功能：當用戶透過 Supabase OAuth 註冊時，自動在資料庫建立相關記錄
+-- 
+-- 依賴：
+--   - auth.users (Supabase Auth schema)
+--   - public.users
+--   - public.profiles
+-- 
+-- 建立日期：2025-11-04
+-- 最後修改：2025-11-05 (拆分地址解析功能至獨立 migration)
 -- =============================================
 
 -- 建立觸發器函數：處理新用戶註冊
@@ -12,13 +20,14 @@ DECLARE
   counter INTEGER := 0;
 BEGIN
   -- 提取基礎暱稱
+  -- 嘗試從多個可能的 OAuth metadata 欄位中提取
   base_nickname := COALESCE(
-    NEW.raw_user_meta_data->>'nickname',
-    NEW.raw_user_meta_data->>'name',
-    NEW.raw_user_meta_data->>'full_name',
-    NEW.raw_user_meta_data->>'user_name',
-    SPLIT_PART(NEW.email, '@', 1),
-    'user_' || SUBSTRING(NEW.id::TEXT, 1, 8)
+    NEW.raw_user_meta_data->>'nickname',     -- Twitter, GitHub
+    NEW.raw_user_meta_data->>'name',         -- Google, GitHub
+    NEW.raw_user_meta_data->>'full_name',    -- Facebook
+    NEW.raw_user_meta_data->>'user_name',    -- Generic
+    SPLIT_PART(NEW.email, '@', 1),           -- Email fallback
+    'user_' || SUBSTRING(NEW.id::TEXT, 1, 8) -- UUID fallback
   );
   
   final_nickname := base_nickname;
@@ -35,9 +44,9 @@ BEGIN
     NEW.id,
     final_nickname,
     COALESCE(
-      NEW.raw_user_meta_data->>'avatar_url',
-      NEW.raw_user_meta_data->>'picture',
-      NEW.raw_user_meta_data->>'profile_picture_url'
+      NEW.raw_user_meta_data->>'avatar_url',          -- GitHub
+      NEW.raw_user_meta_data->>'picture',             -- Google
+      NEW.raw_user_meta_data->>'profile_picture_url'  -- Facebook
     ),
     NOW(),
     NOW()
@@ -64,91 +73,23 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 建立觸發器：在 auth.users 表上監聽新用戶插入
--- 注意：需要在 auth schema 上建立觸發器
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- =============================================
--- 地址解析函數
--- 功能：從 formatted_address 中提取行政區名稱
--- 例如：從 "台中市北屯區文心路四段123號" 提取 "台中市北屯區"
--- =============================================
-
--- 建立函數：解析台灣地址中的行政區
-CREATE OR REPLACE FUNCTION public.extract_district_from_address(address TEXT)
-RETURNS TEXT AS $$
-DECLARE
-  matches TEXT[];
-  result TEXT;
-BEGIN
-  -- 如果地址為空，返回 NULL
-  IF address IS NULL OR address = '' THEN
-    RETURN NULL;
-  END IF;
-
-  -- 使用正則表達式提取縣市和區/鄉/鎮/市
-  -- 台灣地址格式：XXX市XXX區、XXX縣XXX鄉/鎮/市
-  -- 
-  -- 正則表達式模式說明：
-  -- 分兩種模式匹配：
-  -- 1. 直轄市：台北市、新北市、台中市、台南市、高雄市、桃園市、基隆市、新竹市、嘉義市 + 區
-  -- 2. 縣：XXX縣 + 鄉/鎮/市
-  --
-  -- 注意：此模式可根據行政區調整而更新。
-  -- 如需支援更多區域或格式，可修改下方 regexp_matches 的模式字串。
-  matches := regexp_matches(
-    address, 
-    '(台北市|新北市|[台臺]中市|[台臺]南市|高雄市|桃園市|基隆市|新竹市|嘉義市)([^區]+區)|([^縣]+縣)([^鄉鎮市]+[鄉鎮市])'
-  );
-  
-  -- 如果匹配成功，組合縣市和區域
-  IF matches IS NOT NULL THEN
-    -- 直轄市 + 區 的情況（第1和第2個捕獲組）
-    IF matches[1] IS NOT NULL AND matches[2] IS NOT NULL THEN
-      result := matches[1] || matches[2];
-    -- 縣 + 鄉/鎮/市 的情況（第3和第4個捕獲組）
-    ELSIF matches[3] IS NOT NULL AND matches[4] IS NOT NULL THEN
-      result := matches[3] || matches[4];
-    END IF;
-  END IF;
-
-  RETURN result;
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
-
--- 注意：parse_location_district 觸發器函數保留供未來擴展使用
--- 目前不需要在插入/更新時執行額外邏輯，因為地址解析可以透過 RPC 函數按需查詢
--- 如果未來需要將解析結果儲存到專門的欄位，可以在此處實作
-
--- =============================================
--- 輔助函數：取得用戶的行政區
--- =============================================
-
--- 建立 RPC 函數：取得用戶主要地點的行政區
-CREATE OR REPLACE FUNCTION public.get_user_district(p_user_id UUID)
-RETURNS TEXT AS $$
-DECLARE
-  user_address TEXT;
-BEGIN
-  -- 取得用戶主要地點的 formatted_address
-  SELECT formatted_address INTO user_address
-  FROM public.locations
-  WHERE user_id = p_user_id AND is_primary = true
-  LIMIT 1;
-
-  -- 如果沒有主要地點，返回 NULL
-  IF user_address IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  -- 解析並返回行政區
-  RETURN public.extract_district_from_address(user_address);
-END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
-
 -- 加入註解說明
-COMMENT ON FUNCTION public.handle_new_user() IS '處理新用戶註冊，自動在 public.users 和 public.profiles 建立記錄';
-COMMENT ON FUNCTION public.extract_district_from_address(TEXT) IS '從完整地址中提取行政區名稱（例如：台中市北屯區）。使用正則表達式匹配台灣地址格式。';
-COMMENT ON FUNCTION public.get_user_district(UUID) IS '取得指定用戶的主要地點行政區。此函數會查詢用戶的主要位置並解析其行政區資訊。';
+COMMENT ON FUNCTION public.handle_new_user() IS 
+  '處理新用戶 OAuth 註冊，自動在 public.users 和 public.profiles 建立初始記錄。
+  
+  功能：
+  - 從 OAuth metadata 提取 nickname 和頭像
+  - 自動處理 nickname 重複（添加數字後綴）
+  - 初始化用戶 profile（balance=0, carbon_saved_kg=0）
+  - 支援多種 OAuth provider（Google, GitHub, Facebook 等）
+  
+  觸發時機：當用戶透過 OAuth 首次登入時自動執行';
+
+COMMENT ON TRIGGER on_auth_user_created ON auth.users IS
+  '當用戶透過 OAuth 註冊時，自動建立用戶基本資料和 profile。
+  此觸發器確保每個 auth.users 記錄都有對應的 public.users 和 public.profiles 記錄。';
