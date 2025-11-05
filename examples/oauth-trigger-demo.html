@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth 登入與地理定位示範</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+            font-size: 18px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.secondary {
+            background: #2196F3;
+        }
+        button.secondary:hover {
+            background: #0b7dda;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+        .config-section {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 OAuth 登入與地理定位示範</h1>
+        
+        <div class="config-section">
+            <h2>⚙️ Supabase 設定</h2>
+            <p>請輸入您的 Supabase 專案資訊：</p>
+            <input type="text" id="supabaseUrl" placeholder="Supabase URL (例如: https://xxx.supabase.co)">
+            <input type="text" id="supabaseKey" placeholder="Supabase Anon Key">
+            <button onclick="initSupabase()">初始化 Supabase</button>
+        </div>
+
+        <div id="loginSection" class="section hidden">
+            <h2>1. OAuth 登入</h2>
+            <p>選擇 OAuth 提供商進行登入。登入成功後，觸發器會自動在資料庫建立您的用戶記錄。</p>
+            <button onclick="signInWithGoogle()">🔵 使用 Google 登入</button>
+            <button onclick="signInWithGithub()" class="secondary">⚫ 使用 GitHub 登入</button>
+            <div id="loginInfo"></div>
+        </div>
+
+        <div id="userSection" class="section hidden">
+            <h2>2. 用戶資訊</h2>
+            <p>顯示從資料庫取得的用戶資訊（由觸發器自動建立）</p>
+            <button onclick="fetchUserInfo()">🔄 重新載入用戶資訊</button>
+            <button onclick="signOut()" class="danger">🚪 登出</button>
+            <div id="userInfo"></div>
+        </div>
+
+        <div id="locationSection" class="section hidden">
+            <h2>3. 地理定位</h2>
+            <p>取得您的當前位置並儲存到資料庫。系統會自動解析行政區資訊。</p>
+            <button onclick="getAndSaveLocation()">📍 取得並儲存我的位置</button>
+            <button onclick="fetchUserLocation()">🔍 查看已儲存的位置</button>
+            <div id="locationInfo"></div>
+        </div>
+
+        <div id="districtSection" class="section hidden">
+            <h2>4. 行政區資訊</h2>
+            <p>查詢並顯示從地址中解析的行政區資訊（例如：台中市北屯區）</p>
+            <button onclick="fetchUserDistrict()">🏢 取得我的行政區</button>
+            <div id="districtInfo"></div>
+        </div>
+    </div>
+
+    <script>
+        let supabase = null;
+        let currentUser = null;
+
+        // 初始化 Supabase
+        function initSupabase() {
+            const url = document.getElementById('supabaseUrl').value;
+            const key = document.getElementById('supabaseKey').value;
+            
+            if (!url || !key) {
+                showError('loginInfo', '請輸入 Supabase URL 和 Anon Key');
+                return;
+            }
+
+            try {
+                supabase = window.supabase.createClient(url, key);
+                showSuccess('loginInfo', 'Supabase 已初始化！');
+                document.getElementById('loginSection').classList.remove('hidden');
+                
+                // 檢查是否已登入
+                checkSession();
+            } catch (error) {
+                showError('loginInfo', '初始化失敗: ' + error.message);
+            }
+        }
+
+        // 檢查 session
+        async function checkSession() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                currentUser = session.user;
+                showUserSections();
+                await fetchUserInfo();
+            }
+        }
+
+        // Google OAuth 登入
+        async function signInWithGoogle() {
+            try {
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.origin
+                    }
+                });
+                
+                if (error) throw error;
+                showSuccess('loginInfo', '正在重定向到 Google 登入...');
+            } catch (error) {
+                showError('loginInfo', '登入失敗: ' + error.message);
+            }
+        }
+
+        // GitHub OAuth 登入
+        async function signInWithGithub() {
+            try {
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'github',
+                    options: {
+                        redirectTo: window.location.origin
+                    }
+                });
+                
+                if (error) throw error;
+                showSuccess('loginInfo', '正在重定向到 GitHub 登入...');
+            } catch (error) {
+                showError('loginInfo', '登入失敗: ' + error.message);
+            }
+        }
+
+        // 登出
+        async function signOut() {
+            try {
+                const { error } = await supabase.auth.signOut();
+                if (error) throw error;
+                
+                currentUser = null;
+                hideUserSections();
+                showSuccess('loginInfo', '已成功登出');
+            } catch (error) {
+                showError('loginInfo', '登出失敗: ' + error.message);
+            }
+        }
+
+        // 取得用戶資訊
+        async function fetchUserInfo() {
+            if (!currentUser) return;
+            
+            try {
+                // 取得 public.users 資料
+                const { data: userData, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', currentUser.id)
+                    .single();
+                
+                if (userError) throw userError;
+
+                // 取得 public.profiles 資料
+                const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .single();
+                
+                if (profileError) throw profileError;
+
+                const info = `
+用戶 ID: ${userData.id}
+暱稱: ${userData.nickname}
+頭像: ${userData.profile_picture_url || '未設定'}
+平均評價: ${userData.avg_rating}
+點數餘額: ${profileData.balance}
+累計減碳量: ${profileData.carbon_saved_kg} kg
+建立時間: ${new Date(userData.created_at).toLocaleString('zh-TW')}
+                `.trim();
+                
+                showInfo('userInfo', info);
+            } catch (error) {
+                showError('userInfo', '取得用戶資訊失敗: ' + error.message);
+            }
+        }
+
+        // 取得並儲存位置
+        async function getAndSaveLocation() {
+            if (!navigator.geolocation) {
+                showError('locationInfo', '您的瀏覽器不支援地理定位功能');
+                return;
+            }
+
+            showInfo('locationInfo', '正在取得您的位置...');
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    
+                    try {
+                        // 注意：實際應用中需要使用 Google Geocoding API 來取得 formatted_address
+                        // Google Geocoding API 範例：
+                        // const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}&language=zh-TW`
+                        // 這裡為了示範，使用符合台灣地址格式的模擬地址
+                        // 真實地址範例："台中市北屯區文心路四段123號"
+                        const mockAddress = '台中市北屯區文心路四段100號';
+                        
+                        const { data: session } = await supabase.auth.getSession();
+                        const token = session?.session?.access_token;
+                        
+                        // 呼叫 save-location Edge Function
+                        const response = await fetch(
+                            `${document.getElementById('supabaseUrl').value}/functions/v1/save-location`,
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    latitude,
+                                    longitude,
+                                    type: '其他',
+                                    is_primary: true,
+                                    formatted_address: mockAddress
+                                })
+                            }
+                        );
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            showSuccess('locationInfo', `
+位置已成功儲存！
+緯度: ${latitude.toFixed(6)}
+經度: ${longitude.toFixed(6)}
+模擬地址: ${mockAddress}
+（實際應用中應使用 Google Geocoding API 取得真實地址）
+                            `.trim());
+                        } else {
+                            showError('locationInfo', '儲存位置失敗: ' + result.error);
+                        }
+                    } catch (error) {
+                        showError('locationInfo', '處理位置時發生錯誤: ' + error.message);
+                    }
+                },
+                (error) => {
+                    showError('locationInfo', '無法取得位置: ' + error.message);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        }
+
+        // 取得已儲存的位置
+        async function fetchUserLocation() {
+            if (!currentUser) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('locations')
+                    .select('*')
+                    .eq('user_id', currentUser.id)
+                    .eq('is_primary', true)
+                    .single();
+                
+                if (error) {
+                    if (error.code === 'PGRST116') {
+                        showInfo('locationInfo', '尚未儲存位置資訊');
+                    } else {
+                        throw error;
+                    }
+                    return;
+                }
+
+                const info = `
+位置 ID: ${data.id}
+類型: ${data.type}
+主要地點: ${data.is_primary ? '是' : '否'}
+格式化地址: ${data.formatted_address || '未設定'}
+建立時間: ${new Date(data.created_at).toLocaleString('zh-TW')}
+                `.trim();
+                
+                showInfo('locationInfo', info);
+            } catch (error) {
+                showError('locationInfo', '取得位置資訊失敗: ' + error.message);
+            }
+        }
+
+        // 取得用戶行政區
+        async function fetchUserDistrict() {
+            if (!currentUser) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .rpc('get_user_district', { p_user_id: currentUser.id });
+                
+                if (error) throw error;
+
+                if (data) {
+                    showSuccess('districtInfo', `您的行政區: ${data}`);
+                } else {
+                    showInfo('districtInfo', '尚未設定位置或無法解析行政區');
+                }
+            } catch (error) {
+                showError('districtInfo', '取得行政區失敗: ' + error.message);
+            }
+        }
+
+        // 輔助函數
+        function showUserSections() {
+            document.getElementById('userSection').classList.remove('hidden');
+            document.getElementById('locationSection').classList.remove('hidden');
+            document.getElementById('districtSection').classList.remove('hidden');
+        }
+
+        function hideUserSections() {
+            document.getElementById('userSection').classList.add('hidden');
+            document.getElementById('locationSection').classList.add('hidden');
+            document.getElementById('districtSection').classList.add('hidden');
+        }
+
+        function showInfo(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="info">${message}</div>`;
+        }
+
+        function showSuccess(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="success">${message}</div>`;
+        }
+
+        function showError(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // 監聽 auth 狀態變化
+        if (window.supabase) {
+            // 頁面載入時檢查 URL hash（OAuth 回調）
+            window.addEventListener('load', async () => {
+                if (window.location.hash) {
+                    // OAuth 回調後等待 Supabase 客戶端初始化
+                    // 使用 Promise 方式等待而非固定延遲，並防止競態條件
+                    await new Promise(resolve => {
+                        let checkIntervalId = null;
+                        let timeoutId = null;
+                        let resolved = false; // 防止多次 resolve
+                        
+                        const cleanup = () => {
+                            if (!resolved) {
+                                resolved = true;
+                                if (checkIntervalId) clearInterval(checkIntervalId);
+                                if (timeoutId) clearTimeout(timeoutId);
+                                resolve();
+                            }
+                        };
+                        
+                        checkIntervalId = setInterval(() => {
+                            if (supabase) {
+                                cleanup();
+                            }
+                        }, 100);
+                        
+                        // 最多等待 5 秒
+                        timeoutId = setTimeout(cleanup, 5000);
+                    });
+                    
+                    if (supabase) {
+                        await checkSession();
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
