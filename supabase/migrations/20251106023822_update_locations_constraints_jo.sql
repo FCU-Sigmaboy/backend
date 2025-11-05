@@ -58,7 +58,11 @@ BEGIN
                     DELETE FROM public.locations WHERE id = loc.id;
                     RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
                 END;
-        END IF;
+            ELSE
+                -- 沒有 items 引用，直接刪除
+                DELETE FROM public.locations WHERE id = loc.id;
+                RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
+            END IF;
     END LOOP;
 END $$;
 
