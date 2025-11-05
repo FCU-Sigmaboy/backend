@@ -18,6 +18,7 @@ DECLARE
   base_nickname TEXT;
   final_nickname TEXT;
   counter INTEGER := 0;
+  max_retries INTEGER := 100;
 BEGIN
   -- 提取基礎暱稱
   -- 嘗試從多個可能的 OAuth metadata 欄位中提取
@@ -33,8 +34,15 @@ BEGIN
   final_nickname := base_nickname;
   
   -- 確保 nickname 唯一性：如果有衝突，添加數字後綴
+  -- 設定重試上限以防止無限迴圈
   WHILE EXISTS (SELECT 1 FROM public.users WHERE nickname = final_nickname AND id != NEW.id) LOOP
     counter := counter + 1;
+    
+    -- 檢查是否超過重試上限
+    IF counter > max_retries THEN
+      RAISE EXCEPTION 'Unable to generate unique nickname after % attempts for base nickname: %', max_retries, base_nickname;
+    END IF;
+    
     final_nickname := base_nickname || '_' || counter;
   END LOOP;
 
