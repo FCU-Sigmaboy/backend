@@ -34,11 +34,30 @@ BEGIN
             -- 已有"家"，刪除"其他"地點
             -- 但首先需要檢查是否有 items 引用此地點
             IF EXISTS (SELECT 1 FROM public.items WHERE location_id = loc.id) THEN
-                RAISE NOTICE '用戶 % 的地點 % 被 items 引用，無法刪除', loc.user_id, loc.id;
-            ELSE
-                DELETE FROM public.locations WHERE id = loc.id;
-                RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
-            END IF;
+                -- 重新指派 items 到用戶的"家"地點，如果沒有則指派到"公司"，如果都沒有則建立"家"
+                DECLARE
+                    new_location_id BIGINT;
+                BEGIN
+                    -- 優先找"家"
+                    SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '家' LIMIT 1;
+                    IF new_location_id IS NULL THEN
+                        -- 沒有"家"，找"公司"
+                        SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '公司' LIMIT 1;
+                    END IF;
+                    IF new_location_id IS NULL THEN
+                        -- 都沒有，建立一個"家"
+                        INSERT INTO public.locations (user_id, type, is_primary, created_at, updated_at)
+                        VALUES (loc.user_id, '家', false, now(), now())
+                        RETURNING id INTO new_location_id;
+                        RAISE NOTICE '為用戶 % 建立新的"家"地點 %', loc.user_id, new_location_id;
+                    END IF;
+                    -- 更新 items 的 location_id
+                    UPDATE public.items SET location_id = new_location_id WHERE location_id = loc.id;
+                    RAISE NOTICE '將用戶 % 的 items 從地點 % 重新指派到地點 %', loc.user_id, loc.id, new_location_id;
+                    -- 現在可以安全刪除"其他"地點
+                    DELETE FROM public.locations WHERE id = loc.id;
+                    RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
+                END;
         END IF;
     END LOOP;
 END $$;
