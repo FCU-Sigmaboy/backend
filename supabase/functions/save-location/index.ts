@@ -147,15 +147,6 @@ serve(async (req) => {
       }
 
       // 檢查地點數量限制
-      if (existingLocations.length >= 2) {
-        return new Response(
-          JSON.stringify({
-            error: '已達地點數量上限',
-            message: '每位用戶最多只能擁有 2 個地點（家和公司）'
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
     }
 
     // 8. 驗證並設定 is_primary（每位用戶全局只能有一個主要地點）
