@@ -108,7 +108,6 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-      type = '家'
       is_primary = true
       console.log('✅ 首次建立地點：自動設定為「家」且 is_primary=true')
     } else {
