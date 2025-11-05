@@ -42,7 +42,6 @@ BEGIN
     IF counter > max_retries THEN
       RAISE EXCEPTION 'Unable to generate unique nickname after % attempts for base nickname: %', max_retries, base_nickname;
     END IF;
-    
     final_nickname := base_nickname || '_' || counter;
   END LOOP;
 
