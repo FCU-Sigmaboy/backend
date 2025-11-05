@@ -1,6 +1,7 @@
 DO $$
 DECLARE
     loc RECORD;
+    new_location_id BIGINT;
 BEGIN
     -- 處理所有"其他"類型的地點
     FOR loc IN
@@ -17,41 +18,41 @@ BEGIN
             UPDATE public.locations
             SET type = '家', updated_at = now()
             WHERE id = loc.id;
-
             RAISE NOTICE '將用戶 % 的地點 % 從"其他"改為"家"', loc.user_id, loc.id;
         ELSE
             -- 已有"家"，刪除"其他"地點
             -- 但首先需要檢查是否有 items 引用此地點
             IF EXISTS (SELECT 1 FROM public.items WHERE location_id = loc.id) THEN
                 -- 重新指派 items 到用戶的"家"地點，如果沒有則指派到"公司"，如果都沒有則建立"家"
-                DECLARE
-                    new_location_id BIGINT;
-                BEGIN
-                    -- 優先找"家"
-                    SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '家' LIMIT 1;
-                    IF new_location_id IS NULL THEN
-                        -- 沒有"家"，找"公司"
-                        SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '公司' LIMIT 1;
-                    END IF;
-                    IF new_location_id IS NULL THEN
-                        -- 都沒有，建立一個"家"
-                        INSERT INTO public.locations (user_id, type, is_primary, created_at, updated_at)
-                        VALUES (loc.user_id, '家', false, now(), now())
-                        RETURNING id INTO new_location_id;
-                        RAISE NOTICE '為用戶 % 建立新的"家"地點 %', loc.user_id, new_location_id;
-                    END IF;
-                    -- 更新 items 的 location_id
-                    UPDATE public.items SET location_id = new_location_id WHERE location_id = loc.id;
-                    RAISE NOTICE '將用戶 % 的 items 從地點 % 重新指派到地點 %', loc.user_id, loc.id, new_location_id;
-                    -- 現在可以安全刪除"其他"地點
-                    DELETE FROM public.locations WHERE id = loc.id;
-                    RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
-                END;
-            ELSE
-                -- 沒有 items 引用，直接刪除
-                DELETE FROM public.locations WHERE id = loc.id;
-                RAISE NOTICE '刪除用戶 % 的"其他"地點 %', loc.user_id, loc.id;
+                new_location_id := NULL;
+                -- 優先找"家"
+                SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '家' LIMIT 1;
+                IF new_location_id IS NULL THEN
+                    -- 沒有"家"，找"公司"
+                    SELECT id INTO new_location_id FROM public.locations WHERE user_id = loc.user_id AND type = '公司' LIMIT 1;
+                END IF;
+                IF new_location_id IS NULL THEN
+                    -- 都沒有，建立一個"家"
+                    INSERT INTO public.locations (user_id, coordinates, type, is_primary, formatted_address, created_at, updated_at)
+                    VALUES (
+                        loc.user_id,
+                        ST_GeogFromText('POINT(0 0)'), -- 預設座標，請根據實際需求調整
+                        '家',
+                        false,
+                        NULL, -- 預設無地址，請根據實際需求調整
+                        now(),
+                        now()
+                    )
+                    RETURNING id INTO new_location_id;
+                    RAISE NOTICE '為用戶 % 建立新的"家"地點 %', loc.user_id, new_location_id;
+                END IF;
+                -- 更新 items 的 location_id
+                UPDATE public.items SET location_id = new_location_id WHERE location_id = loc.id;
+                RAISE NOTICE '將用戶 % 的 items 從地點 % 重新指派到地點 %', loc.user_id, loc.id, new_location_id;
             END IF;
+            -- 現在可以安全刪除"其他"地點
+            DELETE FROM public.locations WHERE id = loc.id;
+        END IF;
     END LOOP;
 END $$;
 
@@ -72,7 +73,7 @@ BEGIN
         SELECT id INTO keep_id
         FROM public.locations
         WHERE user_id = user_rec.user_id AND type = '家'
-        ORDER BY is_primary DESC, created_at ASC
+        ORDER BY is_primary, created_at
         LIMIT 1;
 
         IF keep_id IS NOT NULL THEN
@@ -97,7 +98,7 @@ BEGIN
         SELECT id INTO keep_id
         FROM public.locations
         WHERE user_id = user_rec.user_id AND type = '公司'
-        ORDER BY is_primary DESC, created_at ASC
+        ORDER BY is_primary, created_at
         LIMIT 1;
 
         IF keep_id IS NOT NULL THEN
@@ -146,7 +147,7 @@ BEGIN
             WHERE id = (
                 SELECT id FROM public.locations
                 WHERE user_id = user_rec.user_id
-                ORDER BY type = '家' DESC, created_at ASC
+                ORDER BY type = '家', created_at
                 LIMIT 1
             );
             RAISE NOTICE '用戶 % 沒有主要地點，已設定第一個地點為主要', user_rec.user_id;
@@ -156,7 +157,7 @@ BEGIN
             SELECT id INTO keep_primary_id
             FROM public.locations
             WHERE user_id = user_rec.user_id AND is_primary = true
-            ORDER BY type = '家' DESC, created_at ASC
+            ORDER BY type = '家', created_at
             LIMIT 1;
 
             -- 將其他主要地點設為非主要
@@ -215,4 +216,3 @@ BEGIN
     RAISE NOTICE '   - 每位用戶全局只能有一個 is_primary=true 的地點';
     RAISE NOTICE '========================================';
 END $$;
-
