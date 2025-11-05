@@ -68,6 +68,8 @@ DECLARE
     user_rec RECORD;
     loc_rec RECORD;
     keep_id BIGINT;
+    has_cleanup_failures BOOLEAN := false;
+    failure_details TEXT := '';
 BEGIN
     -- 對每個用戶，檢查每種類型是否有多個地點
     FOR user_rec IN
@@ -90,6 +92,8 @@ BEGIN
                     DELETE FROM public.locations WHERE id = loc_rec.id;
                     RAISE NOTICE '刪除用戶 % 的重複"家"地點 %', user_rec.user_id, loc_rec.id;
                 ELSE
+                    has_cleanup_failures := true;
+                    failure_details := failure_details || format('用戶 %s 的地點 %s (類型: 家) 被 items 引用，無法刪除。', user_rec.user_id, loc_rec.id) || E'\n';
                     RAISE NOTICE '用戶 % 的地點 % 被 items 引用，無法刪除', user_rec.user_id, loc_rec.id;
                 END IF;
             END LOOP;
@@ -113,11 +117,18 @@ BEGIN
                     DELETE FROM public.locations WHERE id = loc_rec.id;
                     RAISE NOTICE '刪除用戶 % 的重複"公司"地點 %', user_rec.user_id, loc_rec.id;
                 ELSE
+                    has_cleanup_failures := true;
+                    failure_details := failure_details || format('用戶 %s 的地點 %s (類型: 公司) 被 items 引用，無法刪除。', user_rec.user_id, loc_rec.id) || E'\n';
                     RAISE NOTICE '用戶 % 的地點 % 被 items 引用，無法刪除', user_rec.user_id, loc_rec.id;
                 END IF;
             END LOOP;
         END IF;
     END LOOP;
+    
+    -- 如果有清理失敗的情況，拋出錯誤並中止遷移
+    IF has_cleanup_failures THEN
+        RAISE EXCEPTION E'遷移失敗：無法清理重複的地點資料，因為這些地點被 items 引用。\n請先手動處理以下地點的 items 引用關係，再重新執行遷移：\n%', failure_details;
+    END IF;
 END $$;
 
 -- 3. 確保每位用戶只有一個 is_primary=true 的地點
