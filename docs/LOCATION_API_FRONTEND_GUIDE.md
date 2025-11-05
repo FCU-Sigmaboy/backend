@@ -103,7 +103,7 @@ body: JSON.stringify({
   latitude: 24.2,
   longitude: 120.8,
   type: '公司',
-  is_primary: false  // "家"保持為主要地點
+  is_primary: false  // 僅當已有主要地點時，"家"保持為主要地點；若目前沒有主要地點，"公司"會自動成為主要地點
 })
 
 // ⚠️ 省略 is_primary（自動判斷）
