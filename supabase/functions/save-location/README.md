@@ -52,30 +52,70 @@ const wktPoint = `POINT(${longitude} ${latitude})`
 ### 3. 地點類型驗證
 
 ```typescript
-const validTypes = ['家', '公司', '其他']
+const validTypes = ['家', '公司']
 ```
 
-- ✅ 允許的值：`'家'`, `'公司'`, `'其他'`
-- ⚠️ 未提供時：自動設定為 `'其他'`
-- ❌ 無效值：返回 400 錯誤並列出有效選項
+**重要限制**：
+- ✅ 允許的值：僅 `'家'` 和 `'公司'`
+- 🚫 已移除：`'其他'` 類型
+- 📍 每位用戶最多只能有 **2 個地點**（一個家、一個公司）
+- 🏠 **首次建立地點必須為「家」**
+- 🔒 每種類型只能有一個地點
+
+**驗證邏輯**：
+
+```typescript
+// 首次建立地點
+if (用戶沒有任何地點) {
+  if (type !== '家') {
+    return 400 錯誤: "首次建立地點必須為「家」"
+  }
+  type = '家'
+  is_primary = true
+}
+
+// 已有地點的情況
+else {
+  // 檢查是否已有該類型
+  if (已有該類型的地點) {
+    return 400 錯誤: "您已經有「{type}」類型的地點"
+  }
+  
+  // 檢查數量限制
+  if (地點數量 >= 2) {
+    return 400 錯誤: "已達地點數量上限"
+  }
+}
+```
 
 ### 4. 主要地點邏輯
+
+**全局唯一 `is_primary` 限制**：
+
+每位用戶在**所有地點中**只能有一個 `is_primary = true` 的地點（不是按類型區分）。
 
 **智慧型 `is_primary` 設定**：
 
 ```typescript
-// 情況 A: 前端明確指定 (true/false)
-if (typeof is_primary === 'boolean') {
-  // 使用前端指定的值
+// 情況 A: 首次建立地點
+if (用戶沒有任何地點) {
+  is_primary = true  // 強制設為主要，必須是「家」
 }
 
-// 情況 B: 前端未指定 (undefined)
+// 情況 B: 已有地點，前端明確指定
+else if (typeof is_primary === 'boolean') {
+  // 使用前端指定的值
+  if (is_primary && 用戶已有主要地點) {
+    // 將現有主要地點改為非主要
+  }
+}
+
+// 情況 C: 已有地點，前端未指定
 else {
-  // 檢查用戶是否已有地點
-  if (用戶沒有任何地點) {
-    is_primary = true  // 第一個地點，設為主要
+  if (用戶沒有主要地點) {
+    is_primary = true  // 確保至少有一個主要地點
   } else {
-    is_primary = false // 已有地點，設為非主要
+    is_primary = false // 預設為非主要
   }
 }
 ```
@@ -84,10 +124,10 @@ else {
 
 ```typescript
 if (is_primary === true) {
-  // 將同類型的其他主要地點設為非主要
+  // 將該用戶的所有其他地點設為非主要（全局限制）
   UPDATE locations 
   SET is_primary = false 
-  WHERE user_id = ? AND type = ? AND is_primary = true
+  WHERE user_id = ? AND is_primary = true
 }
 ```
 
@@ -95,10 +135,13 @@ if (is_primary === true) {
 
 | 用戶現有地點 | 新增請求 | 結果 |
 |------------|---------|------|
-| 無 | `{ type: '家', is_primary: undefined }` | ✅ 自動設為 `is_primary = true` |
-| 家 (主要) | `{ type: '公司', is_primary: true }` | ✅ 家保持主要，公司設為主要 |
-| 家 (主要) | `{ type: '家', is_primary: true }` | ✅ 舊的家設為非主要，新的家設為主要 |
-| 家 (主要) | `{ type: '其他', is_primary: false }` | ✅ 家保持主要，其他設為非主要 |
+| 無 | `{ type: '家', is_primary: undefined }` | ✅ 強制設為 `type='家', is_primary=true` |
+| 無 | `{ type: '公司', is_primary: true }` | ❌ 錯誤：首次建立必須為「家」 |
+| 家 (主要) | `{ type: '公司', is_primary: true }` | ✅ 家改為非主要，公司設為主要 |
+| 家 (主要) | `{ type: '公司', is_primary: false }` | ✅ 家保持主要，公司為非主要 |
+| 家 (主要) | `{ type: '家', is_primary: true }` | ❌ 錯誤：已有「家」類型的地點 |
+| 家 (非主要) | `{ type: '公司', is_primary: undefined }` | ✅ 公司自動設為主要（確保有主要地點） |
+| 家 (主要), 公司 (非主要) | `{ type: '其他' }` | ❌ 錯誤：已達數量上限且不支援「其他」 |
 
 ---
 
@@ -114,10 +157,16 @@ Content-Type: application/json
 {
   "latitude": 24.1817,
   "longitude": 120.7344,
-  "type": "家",           // 可選，預設 "其他"
+  "type": "家",           // 必填（首次必須為"家"）
   "is_primary": true     // 可選，自動判斷
 }
 ```
+
+**參數說明**：
+- `latitude`: 必填，緯度（-90 到 90）
+- `longitude`: 必填，經度（-180 到 180）
+- `type`: 必填（首次建立必須為 `"家"`，後續可為 `"公司"`）
+- `is_primary`: 可選（首次自動為 `true`，後續自動判斷或使用指定值）
 
 ### 成功回應 (200 OK)
 
@@ -158,9 +207,36 @@ Content-Type: application/json
 
 ```json
 {
-  "error": "無效的地點類型",
-  "valid_types": ["家", "公司", "其他"],
+  "error": "無效的地點類型（僅支援「家」和「公司」）",
+  "valid_types": ["家", "公司"],
   "received": "辦公室"
+}
+```
+
+#### 400 Bad Request - 首次建立必須為「家」
+
+```json
+{
+  "error": "首次建立地點必須為「家」",
+  "received": "公司"
+}
+```
+
+#### 400 Bad Request - 重複的地點類型
+
+```json
+{
+  "error": "您已經有「家」類型的地點",
+  "message": "每位用戶只能擁有一個「家」和一個「公司」"
+}
+```
+
+#### 400 Bad Request - 超過數量限制
+
+```json
+{
+  "error": "已達地點數量上限",
+  "message": "每位用戶最多只能擁有 2 個地點（家和公司）"
 }
 ```
 
@@ -286,14 +362,29 @@ CREATE TABLE public.locations (
   id BIGSERIAL PRIMARY KEY,
   user_id UUID NOT NULL,
   coordinates GEOGRAPHY(Point, 4326) NOT NULL,  -- POINT(經度 緯度)
-  type VARCHAR(50) CHECK (type IN ('家', '公司', '其他')),
+  type VARCHAR(50) CHECK (type IN ('家', '公司')),  -- 移除「其他」
   is_primary BOOLEAN NOT NULL DEFAULT false,
   formatted_address TEXT,                       -- 儲存行政區
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
+  
+  -- 約束條件
+  CONSTRAINT unique_user_location_type UNIQUE (user_id, type)  -- 每種類型只能有一個
 );
+
+-- 唯一索引：確保每位用戶只有一個主要地點
+CREATE UNIQUE INDEX unique_user_primary_location 
+ON public.locations (user_id) 
+WHERE is_primary = true;
 ```
+
+### 重要約束
+
+1. **地點類型限制**：只允許 `'家'` 和 `'公司'`
+2. **類型唯一性**：`UNIQUE (user_id, type)` - 每位用戶每種類型只能有一個地點
+3. **主要地點唯一性**：部分唯一索引 - 每位用戶只能有一個 `is_primary = true` 的地點
+4. **數量限制**：每位用戶最多 2 個地點（由類型限制和唯一約束保證）
 
 ### 資料範例
 

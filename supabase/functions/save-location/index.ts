@@ -78,55 +78,109 @@ serve(async (req) => {
       )
     }
 
-    // 7. 驗證並設定地點類型
-    const validTypes = ['家', '公司', '其他']
-    if (type === undefined || type === null || type === '') {
-      type = '其他'
-      console.log('⚠️ 未指定地點類型，預設為「其他」')
-    } else if (!validTypes.includes(type)) {
+    // 7. 驗證並設定地點類型（移除"其他"，只允許"家"和"公司"）
+    const validTypes = ['家', '公司']
+
+    // 檢查用戶現有地點
+    const { data: existingLocations, error: checkError } = await supabaseClient
+      .from('locations')
+      .select('id, type, is_primary')
+      .eq('user_id', user.id)
+
+    if (checkError) {
+      console.error('❌ 查詢用戶地點失敗:', checkError)
       return new Response(
-        JSON.stringify({ 
-          error: '無效的地點類型',
-          valid_types: validTypes,
-          received: type
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: '查詢用戶地點失敗', details: checkError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 8. 驗證並設定 is_primary
-    if (typeof is_primary !== 'boolean') {
-      // 檢查用戶是否已有地點
-      const { data: existingLocations, error: countError } = await supabaseClient
-        .from('locations')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+    const hasExistingLocations = existingLocations && existingLocations.length > 0
 
-      if (countError) {
-        console.error('❌ 查詢用戶地點失敗:', countError)
-        // 如果查詢失敗，預設為主要地點
-        is_primary = true
-      } else {
-        // 如果是第一個地點，設為主要；否則設為非主要
-        is_primary = (existingLocations === null || (existingLocations as any[]).length === 0)
-        console.log(`ℹ️ 自動設定 is_primary: ${is_primary} (用戶${is_primary ? '首次' : '已有'}地點)`)
+    // 如果是首次建立地點，必須是"家"
+    if (!hasExistingLocations) {
+      if (type !== '家') {
+        return new Response(
+          JSON.stringify({
+            error: '首次建立地點必須為「家」',
+            received: type
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      type = '家'
+      is_primary = true
+      console.log('✅ 首次建立地點：自動設定為「家」且 is_primary=true')
+    } else {
+      // 已有地點的情況
+      if (!type || type === '') {
+        return new Response(
+          JSON.stringify({
+            error: '必須指定地點類型',
+            valid_types: validTypes
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (!validTypes.includes(type)) {
+        return new Response(
+          JSON.stringify({
+            error: '無效的地點類型（僅支援「家」和「公司」）',
+            valid_types: validTypes,
+            received: type
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // 檢查是否已有該類型的地點
+      const existingTypeLocation = existingLocations.find(loc => loc.type === type)
+      if (existingTypeLocation) {
+        return new Response(
+          JSON.stringify({
+            error: `您已經有「${type}」類型的地點`,
+            message: '每位用戶只能擁有一個「家」和一個「公司」'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // 檢查地點數量限制
+      if (existingLocations.length >= 2) {
+        return new Response(
+          JSON.stringify({
+            error: '已達地點數量上限',
+            message: '每位用戶最多只能擁有 2 個地點（家和公司）'
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
     }
 
-    // 9. 驗證 is_primary 邏輯：檢查是否與同類型地點衝突
-    if (is_primary && type !== '其他') {
-      const { data: existingPrimary, error: checkError } = await supabaseClient
-        .from('locations')
-        .select('id, type')
-        .eq('user_id', user.id)
-        .eq('type', type)
-        .eq('is_primary', true)
-        .limit(1)
+    // 8. 驗證並設定 is_primary（每位用戶全局只能有一個主要地點）
+    if (!hasExistingLocations) {
+      // 首次建立地點，必定為主要地點
+      is_primary = true
+    } else {
+      // 已有地點的情況
+      if (typeof is_primary !== 'boolean') {
+        // 前端未指定，預設為 false
+        is_primary = false
+      }
 
-      if (checkError) {
-        console.warn('⚠️ 檢查主要地點失敗:', checkError)
-      } else if (existingPrimary && existingPrimary.length > 0) {
-        console.log(`ℹ️ 用戶已有「${type}」類型的主要地點，將取代為新地點`)
+      // 檢查是否已有主要地點
+      const existingPrimaryLocation = existingLocations.find(loc => loc.is_primary === true)
+
+      if (is_primary && existingPrimaryLocation) {
+        // 如果新地點要設為主要，需要將現有主要地點改為非主要
+        console.log(`ℹ️ 用戶已有主要地點（類型：${existingPrimaryLocation.type}），將設為非主要`)
+      } else if (is_primary && !existingPrimaryLocation) {
+        console.log('✅ 設定新地點為主要地點')
+      } else if (!is_primary && !existingPrimaryLocation) {
+        // 如果沒有主要地點，至少要有一個主要地點
+        is_primary = true
+        console.log('⚠️ 用戶沒有主要地點，自動將新地點設為主要')
       }
     }
 
@@ -149,19 +203,18 @@ serve(async (req) => {
       )
     }
 
-    // 11. 如果設為主要地點，先將該類型的其他主要地點設為非主要
+    // 11. 如果設為主要地點，先將所有其他地點設為非主要（全局限制）
     if (is_primary) {
       const { error: updateError } = await supabaseClient
         .from('locations')
         .update({ is_primary: false })
         .eq('user_id', user.id)
-        .eq('type', type)
 
       if (updateError) {
         console.warn('⚠️ 更新其他主要地點失敗:', updateError)
         // 不中斷流程，繼續執行
       } else {
-        console.log(`✅ 已將其他「${type}」類型的主要地點設為非主要`)
+        console.log(`✅ 已將用戶的所有其他地點設為非主要`)
       }
     }
 
