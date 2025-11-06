@@ -73,8 +73,6 @@ export async function searchItems(filters = {}) {
     // 4. RPC 回傳的 data 就是完美的 DTO，直接回傳
     // 每個物品的 distance_km 已自動計算（基於買賣雙方的主要地點）
     return data;
-</parameter>
-</invoke>
 }
 
 /* data 範例
