@@ -56,6 +56,14 @@ BEGIN
         RAISE EXCEPTION '使用者未登入';
     END IF;
 
+    -- 驗證分頁參數
+    IF p_page < 1 THEN
+        RAISE EXCEPTION '頁碼必須大於 0';
+    END IF;
+    IF p_size < 1 OR p_size > 100 THEN
+        RAISE EXCEPTION '每頁數量必須在 1 到 100 之間';
+    END IF;
+
     v_offset := (p_page - 1) * p_size;
 
     RETURN QUERY
@@ -130,6 +138,14 @@ BEGIN
     -- 檢查使用者是否登入
     IF v_current_uid IS NULL THEN
         RAISE EXCEPTION '使用者未登入';
+    END IF;
+
+    -- 驗證分頁參數
+    IF p_page < 1 THEN
+        RAISE EXCEPTION '頁碼必須大於 0';
+    END IF;
+    IF p_size < 1 OR p_size > 100 THEN
+        RAISE EXCEPTION '每頁數量必須在 1 到 100 之間';
     END IF;
 
     -- 檢查使用者是否為對話參與者
@@ -366,11 +382,31 @@ $$;
 -- 啟用 Realtime 功能
 -- =============================================
 
--- 為 conversations 表啟用 Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
+-- 為 conversations 表啟用 Realtime（使用 DO 區塊確保冪等性）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND schemaname = 'public'
+        AND tablename = 'conversations'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
+    END IF;
+END $$;
 
--- 為 conversation_messages 表啟用 Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.conversation_messages;
+-- 為 conversation_messages 表啟用 Realtime（使用 DO 區塊確保冪等性）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND schemaname = 'public'
+        AND tablename = 'conversation_messages'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.conversation_messages;
+    END IF;
+END $$;
 
 -- =============================================
 -- 建立額外的索引以優化查詢效能
