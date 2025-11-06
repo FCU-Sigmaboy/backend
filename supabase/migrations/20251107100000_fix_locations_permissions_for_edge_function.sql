@@ -14,8 +14,14 @@ BEGIN;
 -- 步驟 1: 移除舊的 RLS 政策
 -- =============================================
 
--- 刪除舊的 "Users can manage own locations" 政策（太寬鬆）
+-- 刪除舊的 "Users can manage own locations" 政策(太寬鬆)
 DROP POLICY IF EXISTS "Users can manage own locations" ON public.locations;
+
+-- 刪除可能已存在的細分政策,以便重新建立
+DROP POLICY IF EXISTS "Users can view own locations" ON public.locations;
+DROP POLICY IF EXISTS "Users can insert own locations" ON public.locations;
+DROP POLICY IF EXISTS "Users can update own locations" ON public.locations;
+DROP POLICY IF EXISTS "Users can delete own locations" ON public.locations;
 
 -- =============================================
 -- 步驟 2: 建立細分的 RLS 政策
@@ -29,7 +35,7 @@ TO authenticated
 USING (auth.uid() = user_id);
 
 -- 政策 2: 插入 - 只能為自己建立地點
--- 注意：Service Role 會自動繞過 RLS，所以 Edge Function 可以正常運作
+-- 注意:Service Role 會自動繞過 RLS,所以 Edge Function 可以正常運作
 CREATE POLICY "Users can insert own locations"
 ON public.locations
 FOR INSERT
@@ -58,7 +64,7 @@ USING (auth.uid() = user_id);
 -- 確保 authenticated 角色有基本的 CRUD 權限
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.locations TO authenticated;
 
--- 確保 service_role 有完整權限（用於 Edge Function）
+-- 確保 service_role 有完整權限(用於 Edge Function)
 GRANT ALL ON public.locations TO service_role;
 
 -- 確保序列權限
@@ -79,7 +85,7 @@ BEGIN
     WHERE relname = 'locations' AND relnamespace = 'public'::regnamespace;
 
     IF NOT rls_enabled THEN
-        RAISE WARNING 'RLS 未啟用於 locations 表！';
+        RAISE WARNING 'RLS 未啟用於 locations 表!';
     ELSE
         RAISE NOTICE '✓ RLS 已啟用於 locations 表';
     END IF;
@@ -92,12 +98,12 @@ BEGIN
     RAISE NOTICE '✓ locations 表共有 % 個 RLS 政策', policy_count;
 
     IF policy_count < 4 THEN
-        RAISE WARNING '政策數量少於預期（應該有 4 個）';
+        RAISE WARNING '政策數量少於預期(應該有 4 個)';
     END IF;
 END $$;
 
 -- =============================================
--- 步驟 5: 建立測試函數
+-- 步驟 5: 建立或替換測試函數
 -- =============================================
 
 -- 建立測試函數來驗證權限設定
@@ -249,7 +255,7 @@ END $$;
 
 COMMENT ON TABLE public.locations IS
 '用戶地點表 - 已更新 RLS 政策以支援 Edge Function
-- RLS 已啟用，保護用戶資料
+- RLS 已啟用,保護用戶資料
 - Service Role 可繞過 RLS (用於 Edge Function)
 - Authenticated 用戶只能管理自己的地點
 - 支援 save-location Edge Function 操作';
@@ -283,7 +289,7 @@ FROM information_schema.table_privileges
 WHERE table_name = 'locations'
 ORDER BY grantee, privilege_type;
 
--- 測試 4: 實際測試 INSERT（需要在 Edge Function 中執行）
+-- 測試 4: 實際測試 INSERT(需要在 Edge Function 中執行)
 -- 使用 Service Role Key 的客戶端應該可以成功執行
 INSERT INTO locations (user_id, coordinates, type, is_primary, formatted_address)
 VALUES (
