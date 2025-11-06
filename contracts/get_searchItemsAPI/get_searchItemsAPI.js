@@ -1,15 +1,29 @@
 import { supabase } from 'src/supabaseClient'; // 假設您已在 src/supabaseClient.js 初始化
 
 // ===================================================================
-// ### 物品搜尋 API (Item Search API)
+// ### 物品搜尋 API (Item Search API) - v6.0 (2025-11-07)
+// ===================================================================
+// ### Migration v2.0 變更說明：
+// ###   - ✅ 已使用 user_id 關聯位置（透過 items.user_id → locations.user_id）
+// ###   - ✅ 自動使用賣家的主要地點 (is_primary=true)
+// ###   - ✅ 自動使用買家的主要地點計算距離
+// ###   - ✅ 不再需要傳遞 latitude/longitude 參數
+// ###   - ✅ 符合新的資料庫架構（已移除 items.location_id）
 // ===================================================================
 
-// *** 移除 getCurrentLocation 輔助函式 (如果不再需要) ***
-// *** 已更新為使用使用者主要地點計算距離 ***
-
 /**
- * 統一的物品搜尋函式 (RPC)
- * (此函式已更新為使用使用者 "主要地點" 計算距離，不再需要傳入經緯度)
+ * 統一的物品搜尋函式 (RPC v6.0)
+ *
+ * 🔄 Migration v2.0 更新 (2025-11-07):
+ *   - 不再需要傳入經緯度參數
+ *   - 自動使用登入者的主要地點計算距離
+ *   - 使用 items.user_id 關聯賣家位置（取代舊的 items.location_id）
+ *
+ * 位置關聯邏輯:
+ *   - 買家位置: 自動從 locations 表取得登入者的主要地點
+ *   - 賣家位置: items.user_id → locations.user_id (is_primary=true)
+ *   - 距離計算: PostGIS ST_Distance 計算買賣雙方主要地點的距離
+ *
  * @param {object} filters - 篩選條件
  * @param {number} [filters.distance_range_km] - (可選) 搜尋半徑 (公里)
  * @param {number} [filters.main_category_id] - (可選) 主分類 ID
@@ -32,7 +46,8 @@ export async function searchItems(filters = {}) {
     }
 
     // 2. 準備傳遞給 RPC 函式的參數
-    // *** 不再需要 p_user_latitude, p_user_longitude ***
+    // ✅ Migration v2.0: 不再需要 p_user_latitude, p_user_longitude
+    // ✅ RPC 會自動使用登入者的主要地點計算距離
     const rpcParams = {
         p_distance_range_km: filters.distance_range_km || null,
         p_main_category_id: filters.main_category_id || null,
@@ -45,16 +60,18 @@ export async function searchItems(filters = {}) {
         p_sort_direction: filters.sort_direction || 'desc'
     };
 
-    // 3. 呼叫 RPC 函式
+    // 3. 呼叫 RPC 函式 (v6.0 - 使用 user_id 關聯位置)
     const { data, error } = await supabase.rpc('search_items', rpcParams);
 
     if (error) {
         console.error('Supabase 搜尋物品失敗:', error);
-        // 這裡可能會捕捉到 "請先設定您的主要地點" 的錯誤 (如果您選擇方案 A)
+        // 可能的錯誤訊息:
+        // - "請先設定您的主要地點" (如果使用者沒有任何地點)
         throw new Error(error.message);
     }
 
-    // RPC 回傳的 data 就是完美的 DTO，直接回傳
+    // 4. RPC 回傳的 data 就是完美的 DTO，直接回傳
+    // 每個物品的 distance_km 已自動計算（基於買賣雙方的主要地點）
     return data;
 }
 

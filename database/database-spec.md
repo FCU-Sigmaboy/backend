@@ -1,7 +1,11 @@
 # FCU Sigma 生態交換平台 - 資料庫規格文件
 
+## 版本資訊
+- **當前版本**: v2.0 (2025-11-07)
+- **重要變更**: 移除 `items.location_id`,改用 `items.user_id` 關聯使用者主要地點
+
 ## 概述
-本文件描述 FCU Sigma 生態交換平台的完整資料庫架構，採用 PostgreSQL + PostGIS 技術棧，並整合 Supabase 的認證與儲存功能。
+本文件描述 FCU Sigma 生態交換平台的完整資料庫架構,採用 PostgreSQL + PostGIS 技術棧,並整合 Supabase 的認證與儲存功能。
 
 ## 系統特色
 - **地理位置功能**: 使用 PostGIS 擴展支援地理位置計算
@@ -66,19 +70,30 @@ CREATE TABLE public.profiles (
 ```
 
 #### 4. locations (使用者地點表)
-**用途**: 儲存使用者的地理位置資訊，支援多地點
+**用途**: 儲存使用者的地理位置資訊,支援多地點
+
+**⭐ Migration v2.0 重要說明**:
+- 物品不再直接關聯 `location_id`
+- 物品透過 `items.user_id` 自動使用使用者的主要地點 (`is_primary=true`)
+- 使用者更改主要地點時,所有物品自動使用新地點
+
 ```sql
 CREATE TABLE public.locations (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL,                                  -- FK to users.id
     coordinates GEOGRAPHY(Point, 4326) NOT NULL,            -- PostGIS 地理座標
     type VARCHAR(50) CHECK (type IN ('家', '公司', '其他')),
-    is_primary BOOLEAN NOT NULL DEFAULT false,              -- 是否為主要地點
+    is_primary BOOLEAN NOT NULL DEFAULT false,              -- 是否為主要地點 ⭐ 關鍵欄位
     formatted_address TEXT,                                 -- 格式化地址
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
 );
+```
+
+**索引**:
+```sql
+CREATE INDEX idx_locations_user_id_primary ON locations(user_id, is_primary);
 ```
 
 #### 5. sub_categories (子分類表)
@@ -96,14 +111,20 @@ CREATE TABLE public.sub_categories (
 
 ### 第三層：核心業務表
 
-#### 6. items (物品表)
-**用途**: 系統核心，儲存所有待交換物品
+#### 6. items (物品表) ⭐ v2.0 已更新
+**用途**: 系統核心,儲存所有待交換物品
+
+**🔄 Migration v2.0 變更 (2025-11-07)**:
+- ❌ 移除 `location_id` 欄位和外鍵約束
+- ✅ 物品位置透過 `user_id` 自動關聯使用者的主要地點
+- ✅ 架構: `items.user_id → users.id → locations.user_id (is_primary=true)`
+
 ```sql
 CREATE TABLE public.items (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID NOT NULL,                                  -- 物品擁有者
+    user_id UUID NOT NULL,                                  -- 物品擁有者 ⭐ 同時用於關聯地點
     sub_category_id INTEGER NOT NULL,                       -- 物品分類
-    location_id BIGINT NOT NULL,                           -- 物品位置
+    -- ❌ location_id BIGINT NOT NULL,                      -- 已移除 (v2.0)
     title VARCHAR(50) NOT NULL,                             -- 物品標題
     description TEXT,                                       -- 詳細描述
     condition VARCHAR(20) NOT NULL                          -- 物品狀況
@@ -116,9 +137,18 @@ CREATE TABLE public.items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    FOREIGN KEY (sub_category_id) REFERENCES public.sub_categories(id) ON DELETE RESTRICT,
-    FOREIGN KEY (location_id) REFERENCES public.locations(id) ON DELETE RESTRICT
+    FOREIGN KEY (sub_category_id) REFERENCES public.sub_categories(id) ON DELETE RESTRICT
+    -- ❌ FOREIGN KEY (location_id) REFERENCES public.locations(id) ON DELETE RESTRICT  -- 已移除 (v2.0)
 );
+```
+
+**地點查詢方式**:
+```sql
+-- 取得物品的地點資訊 (透過使用者的主要地點)
+SELECT i.*, l.formatted_address, l.coordinates
+FROM items i
+LEFT JOIN locations l ON i.user_id = l.user_id AND l.is_primary = true
+WHERE i.id = ?;
 ```
 
 ### 第四層：交易與互動功能
@@ -254,8 +284,14 @@ CREATE TABLE public.conversation_messages (
 
 ## 核心 RPC 函數
 
-### 1. search_items() - 物品搜尋
-**功能**: 根據多種條件搜尋物品，支援地理位置排序
+### 1. search_items() - 物品搜尋 (v6.0) ⭐
+**功能**: 根據多種條件搜尋物品,支援地理位置排序
+
+**🔄 Migration v2.0 更新**:
+- ✅ 自動使用買家的主要地點計算距離
+- ✅ 自動使用賣家的主要地點 (透過 `items.user_id`)
+- ✅ 不再需要傳遞經緯度參數
+
 **參數**:
 - `p_distance_range_km`: 搜尋半徑 (公里)
 - `p_main_category_id`: 主分類 ID
@@ -268,13 +304,60 @@ CREATE TABLE public.conversation_messages (
 
 **回傳**: 物品清單含距離、收藏數、使用者資訊
 
-### 2. get_my_favorite_items() - 我的收藏
+**距離計算邏輯**:
+```sql
+-- 買家位置: auth.uid() → locations (is_primary=true)
+-- 賣家位置: items.user_id → locations (is_primary=true)
+-- 距離: ST_Distance(買家座標, 賣家座標)
+```
+
+### 2. get_my_favorite_items() - 我的收藏 (v2.0) ⭐
 **功能**: 取得當前使用者的收藏物品
-**特色**: 自動計算距離，包含收藏時間
+
+**🔄 Migration v2.0 更新**:
+- ✅ 自動使用當前使用者的主要地點計算距離
+- ✅ 自動使用賣家的主要地點 (透過 `items.user_id`)
+
+**特色**: 自動計算距離,包含收藏時間
 
 ### 3. get_my_items() - 我的物品
 **功能**: 取得當前使用者發布的物品
 **特色**: 包含收藏統計
+
+### 4. get_item_details_with_location() - 物品詳情 (v3.0) ⭐
+**功能**: 取得單一物品的完整詳情
+
+**🔄 Migration v2.0 更新**:
+- ✅ 使用 `items.user_id` 關聯賣家位置
+- ✅ 完整的隱私保護機制
+- ✅ 支援未登入用戶瀏覽基本資訊
+
+**參數**:
+- `p_item_id`: 物品 ID
+
+**回傳**: 完整物品資訊含地點、距離、賣家資訊等
+
+### 5. create_item() - 刊登物品 (v2.0) ⭐
+**功能**: 建立新物品
+
+**🔄 Migration v2.0 重大變更**:
+- ❌ 移除 `p_user_location_id` 參數
+- ✅ 自動使用使用者的主要地點
+- ✅ 刊登前會檢查使用者是否有設定地點
+
+**參數**:
+- `p_sub_category_id`: 子分類 ID
+- ~~`p_user_location_id`~~: ❌ 已移除 (v2.0)
+- `p_title`: 物品標題
+- `p_description`: 物品描述
+- `p_condition`: 物品狀況
+- `p_price`: 價格(點數)
+- `p_carbon_value`: 碳價值 (可選)
+- `p_image_urls`: 圖片 URLs (可選)
+- `p_tags`: 標籤 (可選)
+
+**錯誤處理**:
+- 如果使用者沒有任何地點,會回傳錯誤: "請先在個人資料中設定地點後再刊登物品"
 
 ---
 
@@ -308,17 +391,22 @@ CREATE TABLE public.conversation_messages (
 ```sql
 -- 地理位置查詢
 CREATE INDEX idx_locations_coordinates ON locations USING GIST(coordinates);
+CREATE INDEX idx_locations_user_id_primary ON locations(user_id, is_primary);  -- ⭐ v2.0 新增
 
 -- 物品搜尋
 CREATE INDEX idx_items_listing_status ON items(listing_status);
 CREATE INDEX idx_items_created_at ON items(created_at DESC);
 CREATE INDEX idx_items_tags ON items USING GIN(tags);
 
--- 使用者關聯
+-- 使用者關聯 (⭐ v2.0 重要: items.user_id 同時用於地點關聯)
 CREATE INDEX idx_items_user_id ON items(user_id);
 CREATE INDEX idx_favorites_user_id ON favorites(user_id);
 CREATE INDEX idx_point_logs_user_id ON point_logs(user_id);
 ```
+
+**索引說明**:
+- `idx_locations_user_id_primary`: 用於快速查詢使用者的主要地點,這是 v2.0 的關鍵索引
+- `idx_items_user_id`: 除了關聯使用者外,也用於 JOIN locations 表查詢物品地點
 
 ---
 
@@ -383,6 +471,27 @@ $$ LANGUAGE plpgsql;
 
 ### 遷移管理  
 所有資料庫變更都應透過 migration 檔案管理，確保版本控制與部署一致性。
+
+---
+
+## Migration 歷程
+
+### v2.0 (2025-11-07) - 移除 items.location_id
+**變更內容**:
+- 移除 `items.location_id` 欄位和相關外鍵約束
+- 物品改為透過 `items.user_id` 關聯使用者的主要地點
+- 更新所有相關 RPC 函數 (search_items v6.0, get_my_favorite_items v2.0, get_item_details_with_location v3.0, create_item v2.0)
+- 新增 `idx_locations_user_id_primary` 索引
+
+**優勢**:
+- 簡化資料模型,物品自動使用使用者的主要地點
+- 使用者更改主要地點時,所有物品自動更新
+- 減少資料不一致的可能性
+- 更符合業務邏輯
+
+**相關文件**:
+- [MIGRATION_GUIDE_20251107.md](../supabase/migrations/MIGRATION_GUIDE_20251107.md)
+- [QUICK_REFERENCE.md](../supabase/migrations/QUICK_REFERENCE.md)
 
 ---
 
