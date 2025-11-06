@@ -12,7 +12,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // 驗證環境變數是否存在
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('缺少必要的 Supabase 環境變數！')
-  console.error('請確認 .env 檔案中包含 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY')
+  console.error('請確認 .env.staging 檔案中包含 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY')
 }
 
 /**

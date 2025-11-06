@@ -73,7 +73,7 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variable files
-.env
+tests/.env.staging
 .env.development.local
 .env.test.local
 .env.production.local
@@ -138,3 +138,5 @@ dist
 /.vscode/
 /package-lock.json
 /scripts/env-staging.sh
+/packages/package-lock.json
+.DS_Store

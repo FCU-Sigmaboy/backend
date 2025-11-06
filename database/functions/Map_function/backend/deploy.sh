@@ -97,23 +97,23 @@ case $ENVIRONMENT in
         echo ""
 
         # 讀取 staging 配置
-        if [ ! -f "../../.env.staging.example" ]; then
-            echo -e "${RED}錯誤：找不到 .env.staging.example 配置文件${NC}"
+        if [ ! -f "../../../../.env.staging" ]; then
+            echo -e "${RED}錯誤：找不到 .env.staging 配置文件${NC}"
             exit 1
         fi
 
         echo -e "${YELLOW}請確認您已在 Supabase Dashboard 中設定好 staging 專案${NC}"
         read -p "按 Enter 繼續，或 Ctrl+C 取消..."
 
-        cd ../..
-        npx supabase functions deploy save-location --project-ref YOUR_STAGING_PROJECT_REF
-        cd Map_Function/backend
+        cd ../../../..
+        npx supabase functions deploy save-location --project-ref rsubfpxltwkrdejnvzxw
+        cd database/functions/Map_function/backend
 
         echo ""
         echo -e "${GREEN}✓${NC} Edge Function 已部署到 Staging！"
         echo ""
         echo -e "${BLUE}Staging 測試端點：${NC}"
-        echo "  https://YOUR_STAGING_PROJECT_REF.supabase.co/functions/v1/save-location"
+        echo "  https://rsubfpxltwkrdejnvzxw.supabase.co/functions/v1/save-location"
         ;;
 
     production)
