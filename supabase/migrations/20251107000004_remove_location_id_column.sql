@@ -26,8 +26,8 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace n ON p.pronamespace = n.oid
     WHERE n.nspname = 'public'
-      AND p.prosrc LIKE '%i.location_id%'
-       OR p.prosrc LIKE '%items.location_id%';
+      AND (p.prosrc LIKE '%i.location_id%'
+       OR p.prosrc LIKE '%items.location_id%');
 
     IF v_functions_using_location_id > 0 THEN
         RAISE WARNING '發現 % 個函數可能仍在使用 location_id，請檢查', v_functions_using_location_id;
@@ -69,10 +69,12 @@ END $$;
 -- 步驟 3: 刪除與 location_id 相關的索引
 -- =============================================
 
--- 刪除 location_id 的索引（如果存在）
 DROP INDEX IF EXISTS public.idx_items_location_id;
 
-RAISE NOTICE '已刪除 location_id 相關索引';
+DO $$
+BEGIN
+    RAISE NOTICE '已刪除 location_id 相關索引';
+END $$;
 
 -- =============================================
 -- 步驟 4: 刪除 location_id 欄位
@@ -81,7 +83,10 @@ RAISE NOTICE '已刪除 location_id 相關索引';
 ALTER TABLE public.items
     DROP COLUMN IF EXISTS location_id;
 
-RAISE NOTICE '已成功刪除 items.location_id 欄位';
+DO $$
+BEGIN
+    RAISE NOTICE '已成功刪除 items.location_id 欄位';
+END $$;
 
 -- =============================================
 -- 步驟 5: 驗證欄位已被刪除
@@ -121,13 +126,14 @@ COMMENT ON TABLE public.items IS
 -- 步驟 7: 清理與優化
 -- =============================================
 
--- 重新分析表格統計資訊
 ANALYZE public.items;
 
--- 清理無用的統計資訊
 VACUUM ANALYZE public.items;
 
-RAISE NOTICE '已完成表格優化';
+DO $$
+BEGIN
+    RAISE NOTICE '已完成表格優化';
+END $$;
 
 COMMIT;
 
