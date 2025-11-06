@@ -51,8 +51,9 @@
 **多層安全機制**:
 1. 函數層級：使用 `auth.uid()` 驗證使用者身份
 2. 權限檢查：確認使用者為對話參與者
-3. 輸入驗證：檢查訊息內容非空
+3. 輸入驗證：檢查訊息內容非空、分頁參數範圍驗證
 4. RLS 政策：資料表層級的權限控制（已存在於原始 schema）
+5. 冪等性保證：Realtime 發布設定使用條件檢查，可安全重複執行
 
 ### 7. 文件
 
@@ -60,8 +61,9 @@
 |-----|------|
 | `MESSAGING_API.md` | 完整的 API 使用文件，包含所有函數的參數、返回值、使用範例 |
 | `examples/messaging_usage.js` | JavaScript/TypeScript 前端整合範例 |
-| `supabase/tests/test_messaging_feature.sql` | SQL 測試腳本，包含 10 個測試案例 |
+| `supabase/tests/test_messaging_feature.sql` | SQL 測試腳本，包含 13 個測試案例 |
 | `README.md` | 更新專案說明，加入訊息功能介紹 |
+| `EVALUATION_REPORT.md` | 程式碼評估報告，詳細分析實作品質與改進建議 |
 
 ## 技術棧
 

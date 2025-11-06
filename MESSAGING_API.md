@@ -33,8 +33,8 @@
 **說明**: 取得當前使用者的所有對話列表，包含最後一則訊息和未讀訊息數量。
 
 **參數**:
-- `p_page` (INT, 選填, 預設: 1) - 頁碼
-- `p_size` (INT, 選填, 預設: 20) - 每頁數量
+- `p_page` (INT, 選填, 預設: 1) - 頁碼（必須 ≥ 1）
+- `p_size` (INT, 選填, 預設: 20) - 每頁數量（範圍: 1-100）
 
 **返回欄位**:
 - `conversation_id`: 對話 ID
@@ -44,11 +44,15 @@
 - `other_user_id`: 對方使用者 ID
 - `other_user_nickname`: 對方暱稱
 - `other_user_profile_picture`: 對方頭像 URL
-- `last_message`: 最後一則訊息內容
-- `last_message_time`: 最後訊息時間
+- `last_message`: 最後一則訊息內容（若無訊息則為 NULL）
+- `last_message_time`: 最後訊息時間（若無訊息則為 NULL）
 - `unread_count`: 未讀訊息數量
 - `created_at`: 對話建立時間
 - `updated_at`: 對話更新時間
+
+**注意事項**:
+- `last_message` 和 `last_message_time` 在新建立的對話中可能為 NULL
+- 頁碼和每頁數量會進行驗證，超出範圍會拋出錯誤
 
 **使用範例** (JavaScript):
 ```javascript
@@ -69,8 +73,8 @@ const { data, error } = await supabase
 
 **參數**:
 - `p_conversation_id` (BIGINT, 必填) - 對話 ID
-- `p_page` (INT, 選填, 預設: 1) - 頁碼
-- `p_size` (INT, 選填, 預設: 50) - 每頁數量
+- `p_page` (INT, 選填, 預設: 1) - 頁碼（必須 ≥ 1）
+- `p_size` (INT, 選填, 預設: 50) - 每頁數量（範圍: 1-100）
 
 **返回欄位**:
 - `message_id`: 訊息 ID
@@ -80,6 +84,10 @@ const { data, error } = await supabase
 - `content`: 訊息內容
 - `is_read`: 是否已讀
 - `sent_at`: 發送時間
+
+**注意事項**:
+- 頁碼和每頁數量會進行驗證，超出範圍會拋出錯誤
+- 只有對話參與者可以查看訊息
 
 **使用範例** (JavaScript):
 ```javascript
@@ -356,6 +364,8 @@ const { data: readCount } = await supabase
 - `訊息內容不能為空` - 發送空訊息
 - `物品不存在或已下架` - 嘗試對不存在的物品建立對話
 - `無法與自己的物品建立對話` - 嘗試對自己的物品建立對話
+- `頁碼必須大於 0` - 分頁參數驗證失敗
+- `每頁數量必須在 1 到 100 之間` - 分頁參數驗證失敗
 
 **錯誤處理範例**:
 ```javascript

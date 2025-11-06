@@ -134,6 +134,18 @@ SELECT id, updated_at FROM public.conversations WHERE id = 1;
 -- SELECT * FROM public.create_or_get_conversation(999999);
 -- 預期：拋出「物品不存在或已下架」錯誤
 
+-- 測試 8d: 測試分頁參數驗證
+-- SELECT * FROM public.get_user_conversations(0, 20);
+-- 預期：拋出「頁碼必須大於 0」錯誤
+
+-- 測試 8e: 測試每頁數量驗證
+-- SELECT * FROM public.get_user_conversations(1, 200);
+-- 預期：拋出「每頁數量必須在 1 到 100 之間」錯誤
+
+-- 測試 8f: 測試訊息查詢分頁驗證
+-- SELECT * FROM public.get_conversation_messages(1, -1, 50);
+-- 預期：拋出「頁碼必須大於 0」錯誤
+
 -- =============================================
 -- 測試 9: 驗證索引效能
 -- =============================================
@@ -199,8 +211,9 @@ WHERE pubname = 'supabase_realtime'
 ✓ 取得未讀訊息總數功能正常運作
 ✓ 對話更新時間自動更新（觸發器）
 ✓ 權限控制正常運作（非參與者無法存取）
+✓ 分頁參數驗證正常運作
 ✓ 資料庫索引正常使用
-✓ Realtime 發布設定正確
+✓ Realtime 發布設定正確（冪等性）
 
 如果以上所有項目都通過，訊息功能即可投入使用。
 */
