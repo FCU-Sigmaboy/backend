@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION public.get_my_following(
 )
 RETURNS TABLE (
     user_id UUID,
-    nickname TEXT,
+    nickname VARCHAR(50),
     profile_picture_url TEXT,
     followed_at TIMESTAMPTZ
 )
@@ -33,19 +33,19 @@ BEGIN
     -- 3. 查詢我追蹤的人列表
     RETURN QUERY
     SELECT
-        p.id AS user_id,
-        p.nickname,
-        p.profile_picture_url,
+        u.id AS user_id,
+        u.nickname,
+        u.profile_picture_url,
         f.created_at AS followed_at
     FROM
         public.following f
     INNER JOIN
-        public.profiles p ON f.following_id = p.id
+        public.users u ON f.following_id = u.id
     WHERE
         f.follower_id = v_current_user_id  -- 我追蹤的人（follower_id 是我）
         AND (
             p_search = ''
-            OR p.nickname ILIKE '%' || p_search || '%'  -- 搜尋用戶名稱
+            OR u.nickname ILIKE '%' || p_search || '%'  -- 搜尋用戶名稱
         )
     ORDER BY
         CASE
@@ -55,10 +55,10 @@ BEGIN
             WHEN p_sort_by = 'followed_at' AND p_sort_direction = 'asc' THEN f.created_at
         END ASC,
         CASE
-            WHEN p_sort_by = 'nickname' AND p_sort_direction = 'desc' THEN p.nickname
+            WHEN p_sort_by = 'nickname' AND p_sort_direction = 'desc' THEN u.nickname
         END DESC,
         CASE
-            WHEN p_sort_by = 'nickname' AND p_sort_direction = 'asc' THEN p.nickname
+            WHEN p_sort_by = 'nickname' AND p_sort_direction = 'asc' THEN u.nickname
         END ASC
     LIMIT p_page_size
     OFFSET v_offset;
