@@ -52,7 +52,7 @@ export async function createReview(reviewData) {
     throw new Error('缺少必填欄位：transaction_id');
   }
 
-  if (!reviewData.score) {
+  if (reviewData.score === null || reviewData.score === undefined) {
     throw new Error('缺少必填欄位：score');
   }
 
