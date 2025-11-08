@@ -440,5 +440,5 @@ psql $DATABASE_URL < backup_before_cleanup_YYYYMMDD.sql
 ---
 
 **文件版本:** 1.0  
-**最後更新:** 2024-11-09  
+**最後更新:** 2025-11-09  
 **維護者:** Backend Team
