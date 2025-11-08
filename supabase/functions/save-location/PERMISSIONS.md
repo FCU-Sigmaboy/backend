@@ -74,7 +74,7 @@ const supabaseAdmin = createClient(
 
 ## 🛠️ 權限配置
 
-### Migration: 20251107100000_fix_locations_permissions_for_edge_function.sql
+### Migration: 20251107100000_fix_locations_permissions_for_edge_function_jo.sql
 
 此 migration 配置了 `locations` 表的完整權限：
 

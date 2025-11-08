@@ -18,7 +18,7 @@ Edge Function 驗證身份
 
 ## 📋 Migration 檔案
 
-**檔案**: `20251107100000_fix_locations_permissions_for_edge_function.sql`
+**檔案**: `20251107100000_fix_locations_permissions_for_edge_function_jo.sql`
 
 **執行**:
 ```bash
@@ -191,5 +191,5 @@ const { data } = await supabase
 
 **快速連結**:
 - 完整文件: `save-location/PERMISSIONS.md`
-- Migration: `20251107100000_fix_locations_permissions_for_edge_function.sql`
+- Migration: `20251107100000_fix_locations_permissions_for_edge_function_jo.sql`
 - Edge Function: `save-location/index.ts`
