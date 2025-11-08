@@ -246,8 +246,8 @@ const favorites = await getMyFavoriteItems({
 - [MIGRATION_GUIDE_20251107.md](../../supabase/migrations/MIGRATION_GUIDE_20251107.md)
 - [QUICK_REFERENCE.md](../../supabase/migrations/QUICK_REFERENCE.md)
 - 相關 Migration:
-  - `20251107000001_update_items_location_relationship.sql`
-  - `20251107000002_update_rpc_functions_use_user_location.sql` ⭐ (包含 get_my_favorite_items v2.0)
+  - `20251107000001_update_items_location_relationship_jo.sql`
+  - `20251107000002_update_rpc_functions_use_user_location_jo.sql` ⭐ (包含 get_my_favorite_items v2.0)
 
 ---
 

@@ -108,9 +108,9 @@ export async function createItem(itemData) {
 ### 🔧 Migration 步驟
 
 #### Phase 1-3: 資料庫更新
-1. ✅ 執行 `20251107000001_update_items_location_relationship.sql`
-2. ✅ 執行 `20251107000002_update_rpc_functions_use_user_location.sql`
-3. ✅ 執行 `20251107000003_update_create_item_function.sql`
+1. ✅ 執行 `20251107000001_update_items_location_relationship_jo.sql`
+2. ✅ 執行 `20251107000002_update_rpc_functions_use_user_location_jo.sql`
+3. ✅ 執行 `20251107000003_update_create_item_function_jo.sql`
 
 #### Phase 4: 前端更新（此版本）
 4. ✅ 更新 `create_myItemAPI.js` 移除 `p_user_location_id`
@@ -119,7 +119,7 @@ export async function createItem(itemData) {
 7. ✅ 更新 TypeScript 型別定義
 
 #### Phase 5: 最終清理
-8. ⏳ 待執行 `20251107000004_remove_location_id_column.sql`
+8. ⏳ 待執行 `20251107000004_remove_location_id_column_jo.sql`
 
 ---
 
@@ -297,10 +297,10 @@ interface CreateItemParams {
 - [MIGRATION_GUIDE_20251107.md](../../supabase/migrations/MIGRATION_GUIDE_20251107.md)
 - [QUICK_REFERENCE.md](../../supabase/migrations/QUICK_REFERENCE.md)
 - Migration 檔案：
-  - `20251107000001_update_items_location_relationship.sql`
-  - `20251107000002_update_rpc_functions_use_user_location.sql`
-  - `20251107000003_update_create_item_function.sql`
-  - `20251107000004_remove_location_id_column.sql` (待執行)
+  - `20251107000001_update_items_location_relationship_jo.sql`
+  - `20251107000002_update_rpc_functions_use_user_location_jo.sql`
+  - `20251107000003_update_create_item_function_jo.sql`
+  - `20251107000004_remove_location_id_column_jo.sql` (待執行)
 
 ---
 
