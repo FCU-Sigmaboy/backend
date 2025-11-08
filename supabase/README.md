@@ -13,7 +13,7 @@ migrations/
 ├── 20251025093808_insert_initial_data.sql            # 初始資料
 ├── 20251025101010_setup_row_level_security.sql       # RLS 設定
 ├── ...
-└── 20251109000000_cleanup_deprecated_functions_jo.sql # 清理棄用函數
+└── 20251108133713_cleanup_deprecated_functions_jo.sql # 清理棄用函數
 ```
 
 ## 🚀 快速開始
