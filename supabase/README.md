@@ -7,7 +7,7 @@
 ```
 migrations/
 ├── README.md                                          # 本檔案
-├── DEPRECATED_FUNCTIONS_EVALUATION.md                 # 棄用函數評估報告
+<!-- DEPRECATED_FUNCTIONS_EVALUATION.md 檔案尚未建立，請參考 CLEANUP_GUIDE.md 以取得相關資訊 -->
 ├── CLEANUP_GUIDE.md                                   # 清理操作指南
 ├── 20251025092807_create_initial_schema.sql          # 初始資料庫結構
 ├── 20251025093808_insert_initial_data.sql            # 初始資料
