@@ -24,11 +24,7 @@ async function startConversationWithSeller(itemId) {
       return null;
     }
 
-    // Check if conversation data exists
-    if (!conversation || conversation.length === 0) {
-      console.error('建立對話失敗: 未返回對話資料');
-      return null;
-    }
+    // 取得對話資料後繼續
 
     const conversationId = conversation[0].conversation_id;
     console.log('對話 ID:', conversationId);
