@@ -4,12 +4,14 @@ import { supabase } from "src/supabaseClient"; // 假設您已在 src/supabaseCl
 // ### 聊天室 API (Conversation APIs)
 // 完全使用 RPC 函式,與後端 Migration 保持一致
 //
-// 版本: 1.1
+// 版本: 1.2
 // 更新日期: 2025-11-08
 // 變更說明:
 // - 加強 startChat 的錯誤處理
 // - 新增防重複請求機制
 // - 新增批次查詢對話功能
+// - 新增軟刪除功能支援 (deleteConversation, restoreConversation, deleteMessage)
+// - 更新 getMyConversations 支援 role 和 includeDeleted 參數
 // ===================================================================
 
 // ===================================================================
@@ -227,10 +229,14 @@ export async function getMyConversations(options = {}) {
   // 2. 準備 RPC 參數
   const page = options.page || 1;
   const size = options.size || 20;
+  const role = options.role || "all"; // 新增：buyer, seller, all
+  const includeDeleted = options.includeDeleted || false; // 新增：是否包含已刪除的對話
 
   const rpcParams = {
     p_page: page,
     p_size: size,
+    p_role: role,
+    p_include_deleted: includeDeleted,
   };
 
   // 3. 呼叫 RPC 函式
@@ -263,6 +269,7 @@ export async function getMyConversations(options = {}) {
     unread_count: parseInt(convo.unread_count) || 0,
     created_at: convo.created_at,
     updated_at: convo.updated_at,
+    is_deleted: convo.is_deleted, // 新增：標示是否已被當前使用者刪除
   }));
 }
 
@@ -540,6 +547,164 @@ export async function getUnreadMessageCount() {
  */
 
 // ===================================================================
+// ### 軟刪除功能 (Soft Delete)
+// ===================================================================
+
+/**
+ * 【功能】刪除對話（單方面）
+ * @param {number} conversationId - 對話 ID
+ * @returns {Promise<Object>} - 刪除結果
+ *
+ * @description
+ * - 買家刪除不影響賣家，反之亦然
+ * - 對話不會從資料庫中真正移除
+ * - 可以透過 restoreConversation 恢復
+ *
+ * @example
+ * const result = await deleteConversation(51);
+ * // {
+ * //   success: true,
+ * //   conversation_id: 51,
+ * //   deleted_by_role: "buyer",
+ * //   deleted_at: "2025-11-08T10:30:00+00:00"
+ * // }
+ */
+export async function deleteConversation(conversationId) {
+  // 1. 獲取當前登入者
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("使用者未登入，無法刪除對話");
+  }
+
+  // 2. 驗證 conversationId
+  if (!conversationId || conversationId <= 0) {
+    throw new Error("無效的對話 ID");
+  }
+
+  // 3. 呼叫 RPC 函式
+  const { data, error } = await supabase.rpc("delete_conversation", {
+    p_conversation_id: conversationId,
+  });
+
+  // 4. 錯誤處理
+  if (error) {
+    console.error(`刪除對話失敗 (ID: ${conversationId}):`, error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+/**
+ * 【功能】恢復已刪除的對話
+ * @param {number} conversationId - 對話 ID
+ * @returns {Promise<Object>} - 恢復結果
+ *
+ * @description
+ * - 撤銷使用者自己的刪除操作
+ * - 只能恢復自己刪除的對話
+ *
+ * @example
+ * const result = await restoreConversation(51);
+ * // {
+ * //   success: true,
+ * //   conversation_id: 51,
+ * //   restored_by_role: "buyer",
+ * //   restored_at: "2025-11-08T10:35:00+00:00"
+ * // }
+ */
+export async function restoreConversation(conversationId) {
+  // 1. 獲取當前登入者
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("使用者未登入，無法恢復對話");
+  }
+
+  // 2. 驗證 conversationId
+  if (!conversationId || conversationId <= 0) {
+    throw new Error("無效的對話 ID");
+  }
+
+  // 3. 呼叫 RPC 函式
+  const { data, error } = await supabase.rpc("restore_conversation", {
+    p_conversation_id: conversationId,
+  });
+
+  // 4. 錯誤處理
+  if (error) {
+    console.error(`恢復對話失敗 (ID: ${conversationId}):`, error);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+/**
+ * 【功能】刪除訊息（僅發送者可刪除）
+ * @param {number} messageId - 訊息 ID
+ * @returns {Promise<Object>} - 刪除結果
+ *
+ * @description
+ * - 只有發送者可以刪除自己的訊息
+ * - 刪除後雙方都看不到此訊息
+ * - 訊息無法恢復（與對話刪除不同）
+ *
+ * @example
+ * const result = await deleteMessage(1001);
+ * // {
+ * //   success: true,
+ * //   message_id: 1001,
+ * //   conversation_id: 51,
+ * //   deleted_at: "2025-11-08T10:40:00+00:00"
+ * // }
+ */
+export async function deleteMessage(messageId) {
+  // 1. 獲取當前登入者
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("使用者未登入，無法刪除訊息");
+  }
+
+  // 2. 驗證 messageId
+  if (!messageId || messageId <= 0) {
+    throw new Error("無效的訊息 ID");
+  }
+
+  // 3. 呼叫 RPC 函式
+  const { data, error } = await supabase.rpc("delete_message", {
+    p_message_id: messageId,
+  });
+
+  // 4. 錯誤處理
+  if (error) {
+    console.error(`刪除訊息失敗 (ID: ${messageId}):`, error);
+
+    // 提供友善的錯誤訊息
+    if (error.message.includes("只能刪除自己發送的訊息")) {
+      throw new Error("您只能刪除自己發送的訊息");
+    } else if (error.message.includes("訊息不存在或已被刪除")) {
+      throw new Error("此訊息不存在或已被刪除");
+    } else {
+      throw new Error(error.message);
+    }
+  }
+
+  return data;
+}
+
+// ===================================================================
 // ### 使用建議與最佳實踐
 // ===================================================================
 
@@ -606,6 +771,12 @@ export async function getUnreadMessageCount() {
 // ===================================================================
 
 /**
+ * v1.2 (2025-11-08)
+ * - ✅ 新增軟刪除功能：deleteConversation, restoreConversation, deleteMessage
+ * - ✅ 更新 getMyConversations 支援 role 和 includeDeleted 參數
+ * - ✅ getMyConversations 回傳資料新增 is_deleted 欄位
+ * - ✅ 與資料庫 Migration 20251108052733_feature_conversation_soft_delete.sql 同步
+ *
  * v1.1 (2025-11-08)
  * - ✅ 加強 startChat 錯誤處理（更友善的錯誤訊息）
  * - ✅ 新增 startChatSafe 函數（防重複請求）

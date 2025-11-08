@@ -4,7 +4,7 @@
 
 ### **訊息系統改善計畫實施方案**
 
-*   **文件版本**: 1.1
+*   **文件版本**: 1.2
 *   **制定日期**: 2025-11-07
 *   **最後更新**: 2025-11-08
 *   **目標**: 根據外部顧問的評估報告,針對現有的 Supabase 訊息功能後端設計進行優化,以提升系統的**安全性、效能、穩定性**與**未來擴充性**。
@@ -190,23 +190,264 @@
     WHERE cm.id = v_message_id;
     ```
 
-##### **任務 5：為未來功能（軟刪除、多媒體訊息）預留欄位**
+##### **任務 5：為未來功能（多媒體訊息）預留欄位**
 
-*   **目標**：在資料庫中預先規劃欄位，使未來實作軟刪除、圖片或檔案訊息等功能時，無需進行破壞性的資料庫結構變更。
+*   **目標**：在資料庫中預先規劃欄位，使未來實作圖片或檔案訊息等功能時，無需進行破壞性的資料庫結構變更。
 *   **實作說明**：
-    1.  在 `conversations` 和 `conversation_messages` 表中新增 `deleted_at TIMESTAMPTZ NULL` 欄位。
-    2.  在 `conversation_messages` 表中新增 `message_type TEXT NOT NULL DEFAULT 'text'` 和 `metadata JSONB NULL` 欄位，`metadata` 可用來儲存圖片 URL、檔案大小等資訊。
+    1.  在 `conversation_messages` 表中新增 `message_type TEXT NOT NULL DEFAULT 'text'` 和 `metadata JSONB NULL` 欄位，`metadata` 可用來儲存圖片 URL、檔案大小等資訊。
 
 *   **SQL 腳本**：
     ```sql
     ALTER TABLE public.conversation_messages
-    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL,
     ADD COLUMN IF NOT EXISTS message_type TEXT NOT NULL DEFAULT 'text',
     ADD COLUMN IF NOT EXISTS metadata JSONB NULL;
-
-    ALTER TABLE public.conversations
-    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;
     ```
+
+##### **任務 6：實作軟刪除機制 (Soft Deletes)** ✅ **已完成**
+
+*   **目標**：允許使用者刪除對話或訊息，但不會真正從資料庫移除資料，避免另一方使用者的對話列表出錯，同時支援「單方面刪除」的使用情境。
+*   **問題說明**：
+    -   目前沒有刪除訊息或對話的機制
+    -   直接使用 `DELETE` 會導致資料遺失
+    -   另一方使用者的對話列表會出現錯誤或遺失訊息
+    -   無法支援「我刪除但對方仍可見」的常見需求
+    
+*   **實作說明**：
+
+    **1. 資料表結構調整**
+    
+    為 `conversations` 和 `conversation_messages` 表新增軟刪除相關欄位：
+    
+    ```sql
+    -- 對話表：支援雙方分別刪除
+    ALTER TABLE public.conversations
+    ADD COLUMN IF NOT EXISTS deleted_by_buyer_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS deleted_by_seller_at TIMESTAMPTZ NULL;
+    
+    -- 訊息表：支援發送者刪除（兩方都不可見）
+    ALTER TABLE public.conversation_messages
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS deleted_by UUID NULL;
+    ```
+    
+    **2. 建立索引以提升查詢效能**
+    
+    ```sql
+    -- 加速過濾已刪除訊息的查詢
+    CREATE INDEX IF NOT EXISTS idx_messages_not_deleted
+    ON public.conversation_messages(conversation_id, sent_at DESC)
+    WHERE deleted_at IS NULL;
+    ```
+    
+    **3. 建立 RPC 函數：刪除對話（單方面）**
+    
+    ```sql
+    CREATE OR REPLACE FUNCTION public.delete_conversation(
+        p_conversation_id BIGINT
+    )
+    RETURNS BOOLEAN
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $$
+    DECLARE
+        v_current_uid UUID := auth.uid();
+        v_buyer_id UUID;
+        v_seller_id UUID;
+    BEGIN
+        -- 檢查使用者是否登入
+        IF v_current_uid IS NULL THEN
+            RAISE EXCEPTION '使用者未登入';
+        END IF;
+        
+        -- 取得對話資訊
+        SELECT buyer_id, seller_id INTO v_buyer_id, v_seller_id
+        FROM public.conversations
+        WHERE id = p_conversation_id;
+        
+        -- 檢查對話是否存在
+        IF v_buyer_id IS NULL THEN
+            RAISE EXCEPTION '對話不存在';
+        END IF;
+        
+        -- 檢查是否為對話參與者
+        IF v_current_uid != v_buyer_id AND v_current_uid != v_seller_id THEN
+            RAISE EXCEPTION '無權限刪除此對話';
+        END IF;
+        
+        -- 根據使用者角色更新對應的刪除時間戳
+        IF v_current_uid = v_buyer_id THEN
+            UPDATE public.conversations
+            SET deleted_by_buyer_at = now()
+            WHERE id = p_conversation_id;
+        ELSE
+            UPDATE public.conversations
+            SET deleted_by_seller_at = now()
+            WHERE id = p_conversation_id;
+        END IF;
+        
+        RETURN TRUE;
+    END;
+    $$;
+    ```
+    
+    **4. 建立 RPC 函數：刪除訊息**
+    
+    ```sql
+    CREATE OR REPLACE FUNCTION public.delete_message(
+        p_message_id BIGINT
+    )
+    RETURNS BOOLEAN
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $$
+    DECLARE
+        v_current_uid UUID := auth.uid();
+        v_sender_id UUID;
+    BEGIN
+        -- 檢查使用者是否登入
+        IF v_current_uid IS NULL THEN
+            RAISE EXCEPTION '使用者未登入';
+        END IF;
+        
+        -- 取得訊息的發送者
+        SELECT sender_id INTO v_sender_id
+        FROM public.conversation_messages
+        WHERE id = p_message_id;
+        
+        -- 檢查訊息是否存在
+        IF v_sender_id IS NULL THEN
+            RAISE EXCEPTION '訊息不存在';
+        END IF;
+        
+        -- 只有發送者可以刪除訊息
+        IF v_current_uid != v_sender_id THEN
+            RAISE EXCEPTION '只能刪除自己發送的訊息';
+        END IF;
+        
+        -- 標記訊息為已刪除
+        UPDATE public.conversation_messages
+        SET deleted_at = now(),
+            deleted_by = v_current_uid
+        WHERE id = p_message_id;
+        
+        RETURN TRUE;
+    END;
+    $$;
+    ```
+    
+    **5. 建立清理函數：永久刪除雙方都已刪除的對話**
+    
+    ```sql
+    CREATE OR REPLACE FUNCTION public.cleanup_deleted_conversations()
+    RETURNS INTEGER
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $$
+    DECLARE
+        v_deleted_count INTEGER;
+    BEGIN
+        -- 刪除雙方都已刪除且超過 30 天的對話
+        DELETE FROM public.conversations
+        WHERE deleted_by_buyer_at IS NOT NULL
+          AND deleted_by_seller_at IS NOT NULL
+          AND deleted_by_buyer_at < now() - INTERVAL '30 days'
+          AND deleted_by_seller_at < now() - INTERVAL '30 days';
+        
+        GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+        
+        RETURN v_deleted_count;
+    END;
+    $$;
+    ```
+    
+    **6. 修改 `get_user_conversations` 函數以過濾已刪除對話**
+    
+    在現有的 `WHERE` 子句中加入軟刪除過濾：
+    
+    ```sql
+    WHERE 
+        -- 原有的角色過濾條件
+        CASE 
+            WHEN p_role = 'buyer' THEN c.buyer_id = v_current_uid
+            WHEN p_role = 'seller' THEN c.seller_id = v_current_uid
+            ELSE (c.buyer_id = v_current_uid OR c.seller_id = v_current_uid)
+        END
+        -- 新增：過濾當前使用者已刪除的對話
+        AND (
+            (c.buyer_id = v_current_uid AND c.deleted_by_buyer_at IS NULL) OR
+            (c.seller_id = v_current_uid AND c.deleted_by_seller_at IS NULL)
+        )
+    ```
+    
+    **7. 修改 `get_conversation_messages` 函數以過濾已刪除訊息**
+    
+    在現有的查詢中加入過濾條件：
+    
+    ```sql
+    WHERE conversation_id = p_conversation_id
+      AND deleted_at IS NULL  -- 過濾已刪除訊息
+    ```
+
+*   **使用情境範例**：
+    
+    **情境 1：買家刪除對話**
+    - 買家執行 `delete_conversation(51)`
+    - `deleted_by_buyer_at` 被設定為當前時間
+    - 買家的對話列表中不再顯示此對話
+    - 賣家仍可正常看到對話和訊息
+    
+    **情境 2：雙方都刪除對話**
+    - 買家執行 `delete_conversation(51)` → `deleted_by_buyer_at` 設定
+    - 賣家執行 `delete_conversation(51)` → `deleted_by_seller_at` 設定
+    - 雙方的對話列表都不顯示此對話
+    - 30 天後執行 `cleanup_deleted_conversations()` 會永久刪除
+    
+    **情境 3：刪除訊息**
+    - 使用者執行 `delete_message(1001)`
+    - 訊息標記為已刪除（`deleted_at` 設定）
+    - 雙方都看不到此訊息
+    - 只有發送者可以刪除自己的訊息
+
+*   **前端 API 函數**：
+    
+    需要在 `conversationAPI.js` 新增以下函數：
+    
+    ```javascript
+    /**
+     * 刪除對話（單方面）
+     * @param {number} conversationId - 對話 ID
+     * @returns {Promise<boolean>}
+     */
+    export async function deleteConversation(conversationId) {
+        const { data, error } = await supabase.rpc('delete_conversation', {
+            p_conversation_id: conversationId
+        });
+        if (error) throw new Error(error.message);
+        return data;
+    }
+    
+    /**
+     * 刪除訊息
+     * @param {number} messageId - 訊息 ID
+     * @returns {Promise<boolean>}
+     */
+    export async function deleteMessage(messageId) {
+        const { data, error } = await supabase.rpc('delete_message', {
+            p_message_id: messageId
+        });
+        if (error) throw new Error(error.message);
+        return data;
+    }
+    ```
+
+*   **注意事項**：
+    -   ⚠️ 軟刪除會增加查詢的複雜度，所有相關查詢都需要過濾 `deleted_at` 或 `deleted_by_*_at`
+    -   ⚠️ 需要定期執行 `cleanup_deleted_conversations()` 清理雙方都已刪除的舊對話（建議使用 Supabase 的 pg_cron）
+    -   ⚠️ RLS 政策也需要配合調整，確保已刪除的資料不會被存取
+    -   💡 可以考慮在前端加入「撤銷刪除」功能（在一定時間內可恢復）
 
 ---
 
@@ -245,12 +486,87 @@
     -   [ ] 修改 `send_message` RPC 函數的回傳查詢。
     -   [ ] 通知前端團隊調整對應的 API 回應處理邏輯。
 -   [ ] **任務 5: 預留未來功能欄位**
-    -   [ ] 在 `conversations` 表新增 `deleted_at` 欄位。
-    -   [ ] 在 `conversation_messages` 表新增 `deleted_at`, `message_type`, `metadata` 欄位。
+    -   [ ] 在 `conversation_messages` 表新增 `message_type`, `metadata` 欄位。
+-   [x] **任務 6: 實作軟刪除機制** ✅ **已完成 (2025-11-08)**
+    -   [x] 在 `conversations` 表新增 `deleted_by_buyer_at`, `deleted_by_seller_at` 欄位。
+    -   [x] 在 `conversation_messages` 表新增 `deleted_at`, `deleted_by` 欄位。
+    -   [x] 建立索引 `idx_messages_not_deleted` 以提升查詢效能。
+    -   [x] 實作 `delete_conversation` RPC 函數（支援單方面刪除）。
+    -   [x] 實作 `restore_conversation` RPC 函數（恢復已刪除對話）。
+    -   [x] 實作 `delete_message` RPC 函數（只能刪除自己的訊息）。
+    -   [x] 實作 `cleanup_deleted_conversations` 清理函數。
+    -   [x] 修改 `get_user_conversations` 函數以支援 `p_role` 和 `p_include_deleted` 參數。
+    -   [x] 修改 `get_conversation_messages` 函數以支援 `p_include_deleted` 參數。
+    -   [x] 在 `conversationAPI.js` 新增 `deleteConversation`, `restoreConversation` 和 `deleteMessage` 函數。
+    -   [x] 更新 `conversationAPI.js` 中的 `getMyConversations` 以支援新參數。
+    -   [ ] 調整 RLS 政策以配合軟刪除邏輯（待 P0 任務 1 完成後實作）。
+    -   [ ] 設定 pg_cron 定期執行清理函數（建議每週執行，需生產環境配置）。
+    -   [ ] 前端 UI 實作刪除確認對話框。
+    -   [ ] (可選) 前端實作「撤銷刪除」功能。
 
 ---
 
 ### **第三部分：已完成項目詳情**
+
+#### **✅ 任務 6: 實作軟刪除機制 (2025-11-08)**
+
+**實施內容**：
+
+1. **資料庫層面 (Migration: `20251108052733_feature_conversation_soft_delete.sql`)**
+   - ✅ 新增 `conversations.deleted_by_buyer_at` 和 `conversations.deleted_by_seller_at` 欄位
+   - ✅ 新增 `conversation_messages.deleted_at` 和 `conversation_messages.deleted_by` 欄位
+   - ✅ 建立效能索引：
+     - `idx_messages_not_deleted`
+     - `idx_conversations_buyer_not_deleted`
+     - `idx_conversations_seller_not_deleted`
+   - ✅ 實作 RPC 函數：
+     - `delete_conversation(p_conversation_id)` - 單方面刪除對話
+     - `restore_conversation(p_conversation_id)` - 恢復已刪除對話
+     - `delete_message(p_message_id)` - 刪除訊息（僅發送者可刪）
+     - `cleanup_deleted_conversations(p_days_old)` - 清理雙方都已刪除的對話
+   - ✅ 更新現有 RPC 函數：
+     - `get_user_conversations()` 新增 `p_role` 和 `p_include_deleted` 參數
+     - `get_conversation_messages()` 新增 `p_include_deleted` 參數
+   - ✅ 新增完整的欄位註解和函數說明
+   - ✅ 設定適當的權限控制
+
+2. **API 層面 (conversationAPI.js v1.2)**
+   - ✅ 新增 `deleteConversation(conversationId)` 函數
+   - ✅ 新增 `restoreConversation(conversationId)` 函數
+   - ✅ 新增 `deleteMessage(messageId)` 函數
+   - ✅ 更新 `getMyConversations(options)` 支援：
+     - `options.role` - 角色過濾 (buyer/seller/all)
+     - `options.includeDeleted` - 是否包含已刪除的對話
+   - ✅ 回傳資料新增 `is_deleted` 欄位標示刪除狀態
+   - ✅ 加入完整的參數驗證和錯誤處理
+   - ✅ 提供友善的錯誤訊息
+
+3. **文件**
+   - ✅ 建立完整的使用指南 (`SOFT_DELETE_GUIDE.md`)，包含：
+     - 核心概念說明（單方面刪除、雙方刪除、訊息刪除）
+     - 完整的 API 函數說明與範例
+     - React 使用範例（含撤銷刪除、批次刪除）
+     - UI/UX 最佳實踐建議
+     - 完整的測試清單
+
+**核心特性**：
+- ✅ 支援「單方面刪除」：買家刪除不影響賣家，反之亦然
+- ✅ 對話可恢復：使用者可撤銷自己的刪除操作
+- ✅ 訊息刪除：發送者可刪除訊息，刪除後雙方都不可見
+- ✅ 自動清理：提供清理函數刪除雙方都已刪除且超過指定天數的對話
+- ✅ 效能優化：使用部分索引加速查詢未刪除的資料
+
+**待完成項目**：
+- ⏳ RLS 政策調整（等待任務 1 完成）
+- ⏳ pg_cron 定期清理設定（需生產環境配置）
+- ⏳ 前端 UI 實作（刪除確認、撤銷刪除等）
+
+**相關文件**：
+- Migration: `supabase/migrations/20251108052733_feature_conversation_soft_delete.sql`
+- API: `contracts/conversationAPI/conversationAPI.js` (v1.2)
+- 指南: `contracts/conversationAPI/SOFT_DELETE_GUIDE.md`
+
+---
 
 #### **✅ 任務 2: 唯一索引防止重複對話 (2025-11-08)**
 
