@@ -322,8 +322,8 @@ BEGIN
     -- 嘗試取得現有對話
     SELECT id INTO v_conversation_id
     FROM public.conversations
-    WHERE item_id = p_item_id 
-      AND buyer_id = v_current_uid 
+    WHERE item_id = p_item_id
+      AND buyer_id = v_current_uid
       AND seller_id = v_item_user_id;
 
     -- 如果對話不存在，建立新對話
