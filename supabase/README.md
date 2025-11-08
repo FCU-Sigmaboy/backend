@@ -7,13 +7,13 @@
 ```
 migrations/
 ├── README.md                                          # 本檔案
-├── DEPRECATED_FUNCTIONS_EVALUATION.md                 # 棄用函數評估報告
+<!-- DEPRECATED_FUNCTIONS_EVALUATION.md 檔案尚未建立，請參考 CLEANUP_GUIDE.md 以取得相關資訊 -->
 ├── CLEANUP_GUIDE.md                                   # 清理操作指南
 ├── 20251025092807_create_initial_schema.sql          # 初始資料庫結構
 ├── 20251025093808_insert_initial_data.sql            # 初始資料
 ├── 20251025101010_setup_row_level_security.sql       # RLS 設定
 ├── ...
-└── 20251109000000_cleanup_deprecated_functions_jo.sql # 清理棄用函數
+└── 20251108133713_cleanup_deprecated_functions_jo.sql # 清理棄用函數
 ```
 
 ## 🚀 快速開始
@@ -263,5 +263,5 @@ psql $DATABASE_URL < backup_file.sql
 ---
 
 **維護者:** Backend Team  
-**最後更新:** 2024-11-09  
+**最後更新:** 2025-11-09  
 **版本:** 1.0
