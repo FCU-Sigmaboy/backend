@@ -263,5 +263,5 @@ psql $DATABASE_URL < backup_file.sql
 ---
 
 **維護者:** Backend Team  
-**最後更新:** 2024-11-09  
+**最後更新:** 2025-11-09  
 **版本:** 1.0
