@@ -291,6 +291,9 @@ $$;
 -- 7. 修改現有函數：get_user_conversations
 -- =============================================
 
+-- 刪除舊版本的函數（如果存在）以避免函數簽名衝突
+DROP FUNCTION IF EXISTS public.get_user_conversations(INT, INT);
+
 CREATE OR REPLACE FUNCTION public.get_user_conversations(
     p_page INT DEFAULT 1,
     p_size INT DEFAULT 20,
@@ -410,6 +413,9 @@ $$;
 -- =============================================
 -- 8. 修改現有函數：get_conversation_messages
 -- =============================================
+
+-- 刪除舊版本的函數（如果存在）以避免函數簽名衝突
+DROP FUNCTION IF EXISTS public.get_conversation_messages(BIGINT, INT, INT);
 
 CREATE OR REPLACE FUNCTION public.get_conversation_messages(
     p_conversation_id BIGINT,
