@@ -524,11 +524,16 @@ COMMENT ON FUNCTION public.cleanup_deleted_conversations(INT) IS
 -- 10. 權限設定
 -- =============================================
 
+-- 新增的軟刪除函數權限
 GRANT EXECUTE ON FUNCTION public.delete_conversation(BIGINT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.restore_conversation(BIGINT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_message(BIGINT) TO authenticated;
 -- cleanup 函數只允許管理員執行，不開放給一般使用者
 REVOKE EXECUTE ON FUNCTION public.cleanup_deleted_conversations(INT) FROM PUBLIC;
+
+-- 重新授予被修改函數的權限（因為 DROP FUNCTION 會移除權限）
+GRANT EXECUTE ON FUNCTION public.get_user_conversations(INT, INT, TEXT, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_conversation_messages(BIGINT, INT, INT, BOOLEAN) TO authenticated;
 
 -- =============================================
 -- 11. 設定定期清理任務 (使用 pg_cron)

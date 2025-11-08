@@ -425,9 +425,9 @@ ON public.conversations(updated_at DESC);
 -- 授予執行權限給已認證使用者
 -- =============================================
 
-GRANT EXECUTE ON FUNCTION public.get_user_conversations TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_conversation_messages TO authenticated;
-GRANT EXECUTE ON FUNCTION public.send_message TO authenticated;
-GRANT EXECUTE ON FUNCTION public.mark_messages_as_read TO authenticated;
-GRANT EXECUTE ON FUNCTION public.create_or_get_conversation TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_unread_message_count TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_conversations(INT, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_conversation_messages(BIGINT, INT, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.send_message(BIGINT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_messages_as_read(BIGINT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_or_get_conversation(BIGINT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_unread_message_count() TO authenticated;
