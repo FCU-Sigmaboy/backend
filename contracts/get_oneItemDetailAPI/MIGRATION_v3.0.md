@@ -438,8 +438,8 @@ function editItem() {
 - [QUICK_REFERENCE.md](../../supabase/migrations/QUICK_REFERENCE.md)
 - [CHANGELOG_v2.5.md](./CHANGELOG_v2.5.md) - 前一版本更新記錄
 - 相關 Migration:
-  - `20251107000001_update_items_location_relationship.sql`
-  - `20251107000002_update_rpc_functions_use_user_location.sql` ⭐ (包含 get_item_details_with_location v3.0)
+  - `20251107000001_update_items_location_relationship_jo.sql`
+  - `20251107000002_update_rpc_functions_use_user_location_jo.sql` ⭐ (包含 get_item_details_with_location v3.0)
 
 ---
 

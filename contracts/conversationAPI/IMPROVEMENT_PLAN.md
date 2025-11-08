@@ -72,7 +72,7 @@
 
 *   **目標**：解決高併發下可能產生的重複對話問題 (Race Condition)，從資料庫層級確保資料的唯一性與完整性。
 *   **完成日期**: 2025-11-08
-*   **實作檔案**: `supabase/migrations/20251108050033_idx_conversations_item_buyer_unique.sql`
+*   **實作檔案**: `supabase/migrations/20251108050033_idx_conversations_item_buyer_unique_jo.sql`
 *   **實作說明**：
     1.  ✅ 在 `conversations` 表上針對 `(item_id, buyer_id)` 建立一個 `UNIQUE` 複合索引。
     2.  ✅ 修改 `create_or_get_conversation` 函數，使用 `ON CONFLICT` 語句來處理插入衝突。
@@ -512,7 +512,7 @@
 
 **實施內容**：
 
-1. **資料庫層面 (Migration: `20251108052733_feature_conversation_soft_delete.sql`)**
+1. **資料庫層面 (Migration: `20251108052733_feature_conversation_soft_delete_jo.sql`)**
    - ✅ 新增 `conversations.deleted_by_buyer_at` 和 `conversations.deleted_by_seller_at` 欄位
    - ✅ 新增 `conversation_messages.deleted_at` 和 `conversation_messages.deleted_by` 欄位
    - ✅ 建立效能索引：
@@ -562,7 +562,7 @@
 - ⏳ 前端 UI 實作（刪除確認、撤銷刪除等）
 
 **相關文件**：
-- Migration: `supabase/migrations/20251108052733_feature_conversation_soft_delete.sql`
+- Migration: `supabase/migrations/20251108052733_feature_conversation_soft_delete_jo.sql`
 - API: `contracts/conversationAPI/conversationAPI.js` (v1.2)
 - 指南: `contracts/conversationAPI/SOFT_DELETE_GUIDE.md`
 
@@ -570,7 +570,7 @@
 
 #### **✅ 任務 2: 唯一索引防止重複對話 (2025-11-08)**
 
-**Migration 檔案**: `20251108050033_idx_conversations_item_buyer_unique.sql`
+**Migration 檔案**: `20251108050033_idx_conversations_item_buyer_unique_jo.sql`
 
 **完成內容**:
 1. **唯一索引**: 建立 `idx_conversations_item_buyer_unique` 確保 `(item_id, buyer_id)` 組合的唯一性

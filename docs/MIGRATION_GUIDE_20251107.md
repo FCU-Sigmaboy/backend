@@ -73,24 +73,24 @@ users.id → locations.user_id (透過 is_primary = true)
 ### 執行順序
 
 ```
-1️⃣ 20251107000001_update_items_location_relationship.sql
+1️⃣ 20251107000001_update_items_location_relationship_jo.sql
    - 移除外鍵約束
    - location_id 改為可選（允許 NULL）
    - 建立新索引
 
-2️⃣ 20251107000002_update_rpc_functions_use_user_location.sql
+2️⃣ 20251107000002_update_rpc_functions_use_user_location_jo.sql
    - 更新 search_items 函數
    - 更新 get_my_favorite_items 函數
    - 更新 get_item_details_with_location 函數
 
-3️⃣ 20251107000003_update_create_item_function.sql
+3️⃣ 20251107000003_update_create_item_function_jo.sql
    - 更新 create_item 函數
    - 移除 p_user_location_id 參數
    - 新增 user_has_location 輔助函數
 
 ⏸️ === 暫停：等待前端 API 更新完成 ===
 
-4️⃣ 20251107000004_remove_location_id_column.sql
+4️⃣ 20251107000004_remove_location_id_column_jo.sql
    ⚠️ 只有在前端更新完成且測試通過後才執行
    - 完全刪除 location_id 欄位
    - 清理相關索引
@@ -121,7 +121,7 @@ users.id → locations.user_id (透過 is_primary = true)
 
 ```bash
 # 透過 Supabase Dashboard 或 CLI 執行
-psql -f 20251107000001_update_items_location_relationship.sql
+psql -f 20251107000001_update_items_location_relationship_jo.sql
 ```
 
 **預期結果**:
@@ -150,7 +150,7 @@ WHERE table_name = 'items'
 #### 2.2 執行 Migration 2
 
 ```bash
-psql -f 20251107000002_update_rpc_functions_use_user_location.sql
+psql -f 20251107000002_update_rpc_functions_use_user_location_jo.sql
 ```
 
 **預期結果**:
@@ -179,7 +179,7 @@ SELECT public.get_item_details_with_location(1);
 #### 2.3 執行 Migration 3
 
 ```bash
-psql -f 20251107000003_update_create_item_function.sql
+psql -f 20251107000003_update_create_item_function_jo.sql
 ```
 
 **預期結果**:
@@ -262,7 +262,7 @@ const { data, error } = await supabase.rpc('create_item', {
 #### 4.2 執行 Migration 4
 
 ```bash
-psql -f 20251107000004_remove_location_id_column.sql
+psql -f 20251107000004_remove_location_id_column_jo.sql
 ```
 
 **預期結果**:

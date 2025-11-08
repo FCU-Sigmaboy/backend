@@ -8,18 +8,18 @@
 ## 📋 執行順序
 
 ```
-1. ✅ 20251107000001_update_items_location_relationship.sql
+1. ✅ 20251107000001_update_items_location_relationship_jo.sql
    移除外鍵，location_id 改為可選
 
-2. ✅ 20251107000002_update_rpc_functions_use_user_location.sql
+2. ✅ 20251107000002_update_rpc_functions_use_user_location_jo.sql
    更新所有 RPC 函數的 JOIN 邏輯
 
-3. ✅ 20251107000003_update_create_item_function.sql
+3. ✅ 20251107000003_update_create_item_function_jo.sql
    移除 create_item 的 p_user_location_id 參數
 
    ⏸️ === 暫停：更新前端 ===
 
-4. ⚠️ 20251107000004_remove_location_id_column.sql
+4. ⚠️ 20251107000004_remove_location_id_column_jo.sql
    完全刪除 location_id 欄位（不可逆！）
 ```
 

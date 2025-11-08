@@ -775,7 +775,7 @@ export async function deleteMessage(messageId) {
  * - ✅ 新增軟刪除功能：deleteConversation, restoreConversation, deleteMessage
  * - ✅ 更新 getMyConversations 支援 role 和 includeDeleted 參數
  * - ✅ getMyConversations 回傳資料新增 is_deleted 欄位
- * - ✅ 與資料庫 Migration 20251108052733_feature_conversation_soft_delete.sql 同步
+ * - ✅ 與資料庫 Migration 20251108052733_feature_conversation_soft_delete_jo.sql 同步
  *
  * v1.1 (2025-11-08)
  * - ✅ 加強 startChat 錯誤處理（更友善的錯誤訊息）
