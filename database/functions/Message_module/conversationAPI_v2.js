@@ -3,11 +3,11 @@
  * 支援去角色化設計和多商品對話
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_ANON_KEY,
 );
 
 /**
@@ -27,10 +27,13 @@ const supabase = createClient(
  * //   current_user_is_participant_1: false
  * // }
  */
-export async function createOrGetConversation(otherUserId, initialItemId = null) {
-  const { data, error } = await supabase.rpc('create_or_get_conversation_v2', {
+export async function createOrGetConversation(
+  otherUserId,
+  initialItemId = null,
+) {
+  const { data, error } = await supabase.rpc("create_or_get_conversation_v2", {
     p_other_user_id: otherUserId,
-    p_initial_item_id: initialItemId
+    p_initial_item_id: initialItemId,
   });
 
   if (error) throw error;
@@ -57,12 +60,17 @@ export async function createOrGetConversation(otherUserId, initialItemId = null)
  * //   created_at: '2024-01-15T10:30:00Z'
  * // }
  */
-export async function sendMessage(conversationId, content, messageType = 'text', relatedItemId = null) {
-  const { data, error } = await supabase.rpc('send_message_v2', {
+export async function sendMessage(
+  conversationId,
+  content,
+  messageType = "text",
+  relatedItemId = null,
+) {
+  const { data, error } = await supabase.rpc("send_message_v2", {
     p_conversation_id: conversationId,
     p_content: content,
     p_message_type: messageType,
-    p_related_item_id: relatedItemId
+    p_related_item_id: relatedItemId,
   });
 
   if (error) throw error;
@@ -94,11 +102,15 @@ export async function sendMessage(conversationId, content, messageType = 'text',
  * //   }
  * // ]
  */
-export async function getConversations(page = 1, size = 20, includeArchived = false) {
-  const { data, error } = await supabase.rpc('get_user_conversations_v2', {
+export async function getConversations(
+  page = 1,
+  size = 20,
+  includeArchived = false,
+) {
+  const { data, error } = await supabase.rpc("get_user_conversations_v2", {
     p_page: page,
     p_size: size,
-    p_include_archived: includeArchived
+    p_include_archived: includeArchived,
   });
 
   if (error) throw error;
@@ -132,11 +144,11 @@ export async function getConversations(page = 1, size = 20, includeArchived = fa
  * // ]
  */
 export async function getMessages(conversationId, page = 1, size = 50) {
-  const { data, error } = await supabase.rpc('get_conversation_messages_v2', {
+  const { data, error } = await supabase.rpc("get_conversation_messages_v2", {
     p_conversation_id: conversationId,
     p_page: page,
     p_size: size,
-    p_include_deleted: false
+    p_include_deleted: false,
   });
 
   if (error) throw error;
@@ -154,9 +166,9 @@ export async function getMessages(conversationId, page = 1, size = 50) {
  * // 5 (更新了 5 則訊息)
  */
 export async function markAsRead(conversationId, upToMessageId = null) {
-  const { data, error } = await supabase.rpc('mark_messages_as_read_v2', {
+  const { data, error } = await supabase.rpc("mark_messages_as_read_v2", {
     p_conversation_id: conversationId,
-    p_up_to_message_id: upToMessageId
+    p_up_to_message_id: upToMessageId,
   });
 
   if (error) throw error;
@@ -185,8 +197,8 @@ export async function markAsRead(conversationId, upToMessageId = null) {
  * // ]
  */
 export async function getConversationItems(conversationId) {
-  const { data, error } = await supabase.rpc('get_conversation_items_v2', {
-    p_conversation_id: conversationId
+  const { data, error } = await supabase.rpc("get_conversation_items_v2", {
+    p_conversation_id: conversationId,
   });
 
   if (error) throw error;
@@ -204,9 +216,9 @@ export async function getConversationItems(conversationId) {
  * await archiveConversation(456, false); // 取消歸檔
  */
 export async function archiveConversation(conversationId, archived = true) {
-  const { data, error } = await supabase.rpc('toggle_conversation_archive_v2', {
+  const { data, error } = await supabase.rpc("toggle_conversation_archive_v2", {
     p_conversation_id: conversationId,
-    p_archived: archived
+    p_archived: archived,
   });
 
   if (error) throw error;
@@ -231,14 +243,14 @@ export function subscribeToMessages(conversationId, callback) {
   return supabase
     .channel(`conversation_v2_${conversationId}`)
     .on(
-      'postgres_changes',
+      "postgres_changes",
       {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'conversation_messages_v2',
-        filter: `conversation_id=eq.${conversationId}`
+        event: "INSERT",
+        schema: "public",
+        table: "conversation_messages_v2",
+        filter: `conversation_id=eq.${conversationId}`,
       },
-      (payload) => callback(payload.new)
+      (payload) => callback(payload.new),
     )
     .subscribe();
 }
@@ -254,4 +266,40 @@ export function subscribeToMessages(conversationId, callback) {
 export async function getTotalUnreadCount() {
   const conversations = await getConversations(1, 100, false);
   return conversations.reduce((total, conv) => total + conv.unread_count, 0);
+}
+
+/**
+ * 軟刪除訊息
+ * @param {number} messageId - 訊息 ID
+ * @returns {Promise<boolean>} 操作是否成功
+ *
+ * @example
+ * await deleteMessage(789);
+ * // true
+ */
+export async function deleteMessage(messageId) {
+  const { data, error } = await supabase.rpc("soft_delete_message_v2", {
+    p_message_id: messageId,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * 恢復已刪除的訊息
+ * @param {number} messageId - 訊息 ID
+ * @returns {Promise<boolean>} 操作是否成功
+ *
+ * @example
+ * await restoreMessage(789);
+ * // true
+ */
+export async function restoreMessage(messageId) {
+  const { data, error } = await supabase.rpc("restore_message_v2", {
+    p_message_id: messageId,
+  });
+
+  if (error) throw error;
+  return data;
 }
