@@ -58,19 +58,25 @@ BEGIN
 END $$;
 
 -- =============================================
--- Step 2: 新增 use_primary_location 欄位
+-- Step 2: 新增 use_primary_location 欄位 (若不存在則新增)
 -- =============================================
 
-ALTER TABLE public.items
-ADD COLUMN use_primary_location BOOLEAN NOT NULL DEFAULT true;
-
-COMMENT ON COLUMN public.items.use_primary_location IS
-'指定物品使用主要地點或次要地點：
-- true: 使用主要地點 (locations.is_primary = true)
-- false: 使用次要地點 (locations.is_primary = false)
-透過 JOIN locations 表來動態獲取實際地點資訊';
-
-RAISE NOTICE '✓ 已新增 items.use_primary_location 欄位';
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'items'
+          AND column_name = 'use_primary_location'
+    ) THEN
+        EXECUTE 'ALTER TABLE public.items ADD COLUMN use_primary_location BOOLEAN NOT NULL DEFAULT true';
+        COMMENT ON COLUMN public.items.use_primary_location IS
+        '指定物品使用主要地點或次要地點：\n- true: 使用主要地點 (locations.is_primary = true)\n- false: 使用次要地點 (locations.is_primary = false)\n透過 JOIN locations 表來動態獲取實際地點資訊';
+        RAISE NOTICE '✓ 已新增 items.use_primary_location 欄位';
+    ELSE
+        RAISE NOTICE '✓ items.use_primary_location 欄位已存在，跳過新增';
+    END IF;
+END $$;
 
 -- =============================================
 -- Step 3: 建立索引優化查詢效能
