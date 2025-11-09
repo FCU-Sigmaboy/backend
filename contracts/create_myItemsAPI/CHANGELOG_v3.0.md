@@ -317,7 +317,7 @@ try {
 
 ### 🔧 Migration 檔案
 
-#### Migration 1: `20251108000001_add_use_primary_location_to_items_jo.sql`
+#### Migration 1: `20251109000001_add_use_primary_location_to_items_jo.sql`
 
 **主要內容：**
 - ✅ 新增 `items.use_primary_location` 欄位（預設 true）
@@ -340,7 +340,7 @@ CREATE INDEX idx_locations_user_id_is_primary
     ON locations(user_id, is_primary);
 ```
 
-#### Migration 2: `20251108000002_update_create_item_with_use_primary_location_jo.sql`
+#### Migration 2: `20251109000002_update_create_item_with_use_primary_location_jo.sql`
 
 **主要內容：**
 - ✅ 刪除舊版本 `create_item` 函數
@@ -572,8 +572,8 @@ const { data } = await supabase
 
 ### 🔗 相關文件
 
-- [Migration 20251108000001](../../supabase/migrations/20251108000001_add_use_primary_location_to_items_jo.sql)
-- [Migration 20251108000002](../../supabase/migrations/20251108000002_update_create_item_with_use_primary_location_jo.sql)
+- [Migration 20251108000001](../../supabase/migrations/20251109000001_add_use_primary_location_to_items_jo.sql)
+- [Migration 20251108000002](../../supabase/migrations/20251109000002_update_create_item_with_use_primary_location_jo.sql)
 - [create_myItemAPI.js](./create_myItemAPI.js)
 - [CHANGELOG v2.0](./CHANGELOG_v2.0.md)
 
