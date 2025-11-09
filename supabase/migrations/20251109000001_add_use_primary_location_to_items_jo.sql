@@ -94,8 +94,6 @@ CREATE INDEX IF NOT EXISTS idx_items_listing_status_use_primary
 CREATE INDEX IF NOT EXISTS idx_locations_user_id_is_primary
     ON public.locations(user_id, is_primary);
 
-RAISE NOTICE '✓ 已建立索引優化';
-
 -- =============================================
 -- Step 4: 建立 View 方便查詢物品及其地點資訊
 -- =============================================
@@ -118,8 +116,6 @@ COMMENT ON VIEW items_with_location IS
 '物品及其關聯地點的完整資訊視圖
 自動根據 use_primary_location 欄位 JOIN 對應的地點
 使用範例: SELECT * FROM items_with_location WHERE id = 123';
-
-RAISE NOTICE '✓ 已建立 items_with_location View';
 
 -- =============================================
 -- Step 5: 驗證資料完整性
