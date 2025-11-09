@@ -344,7 +344,10 @@ COMMENT ON FUNCTION public.search_items IS
 - 支援按距離、價格、創建時間排序
 - 支援關鍵字搜尋、分類篩選、距離篩選';
 
-RAISE NOTICE '✓ 已更新 search_items 函數支援 use_primary_location';
+DO $$
+BEGIN
+    RAISE NOTICE '✓ 已更新 search_items 函數支援 use_primary_location';
+END $$;
 
 -- =============================================
 -- 2. 更新 get_item_details_with_location 函數
@@ -366,15 +369,34 @@ DECLARE
     v_is_owner BOOLEAN := FALSE;
     v_user_primary_location GEOGRAPHY(Point, 4326);
     v_result JSON;
+    v_seller_id UUID;
+    v_item_use_primary_location BOOLEAN;
+    v_listing_status BOOLEAN;
 BEGIN
     -- =============================================
-    -- 1. 檢查物品是否存在
+    -- 1. 檢查物品是否存在且已上架
     -- =============================================
-    IF NOT EXISTS (SELECT 1 FROM public.items WHERE id = p_item_id) THEN
+    SELECT u.id, i.use_primary_location, i.listing_status
+    INTO v_seller_id, v_item_use_primary_location, v_listing_status
+    FROM public.items i
+    LEFT JOIN public.users u ON i.user_id = u.id
+    WHERE i.id = p_item_id;
+
+    IF v_seller_id IS NULL THEN
         RETURN json_build_object(
             'error', TRUE,
             'code', 'ITEM_NOT_FOUND',
-            'message', '物品不存在或已下架'
+            'message', '物品不存在或已下架',
+            'item_id', p_item_id
+        );
+    END IF;
+
+    IF v_listing_status IS NOT TRUE THEN
+        RETURN json_build_object(
+            'error', TRUE,
+            'code', 'ITEM_NOT_FOUND',
+            'message', '物品不存在或已下架',
+            'item_id', p_item_id
         );
     END IF;
 
@@ -388,7 +410,26 @@ BEGIN
     END IF;
 
     -- =============================================
-    -- 3. 獲取買家的主要地點（僅已登入且非擁有者）
+    -- 3. 驗證賣家是否有對應的地點（根據 use_primary_location）
+    -- =============================================
+    IF NOT EXISTS (
+        SELECT 1 FROM public.locations
+        WHERE user_id = v_seller_id
+          AND is_primary = v_item_use_primary_location
+    ) THEN
+        RETURN json_build_object(
+            'error', TRUE,
+            'code', 'LOCATION_NOT_FOUND',
+            'message', CASE
+                WHEN v_item_use_primary_location = true THEN '賣家未設定主要地點'
+                ELSE '賣家未設定次要地點'
+            END,
+            'item_id', p_item_id
+        );
+    END IF;
+
+    -- =============================================
+    -- 4. 獲取買家的主要地點（僅已登入且非擁有者）
     -- =============================================
     IF v_current_uid IS NOT NULL AND NOT v_is_owner THEN
         SELECT coordinates INTO v_user_primary_location
@@ -427,7 +468,7 @@ BEGIN
 
         -- 互動狀態
         'is_favorited', CASE
-            WHEN v_current_uid IS NULL THEN FALSE
+            WHEN v_current_uid IS NULL THEN NULL
             ELSE EXISTS (
                 SELECT 1 FROM public.favorites
                 WHERE user_id = v_current_uid AND item_id = i.id
@@ -452,10 +493,7 @@ BEGIN
             'id', u.id,
             'nickname', u.nickname,
             'profile_picture_url', u.profile_picture_url,
-            'avg_rating', COALESCE(
-                (SELECT AVG(rating) FROM public.reviews WHERE seller_id = u.id),
-                0
-            )
+            'avg_rating', u.avg_rating
         ),
 
         -- 分類資訊
@@ -492,13 +530,25 @@ BEGIN
 
     ) INTO v_result
     FROM public.items i
-    LEFT JOIN public.users u ON i.user_id = u.id
+    INNER JOIN public.users u ON i.user_id = u.id
     LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
     LEFT JOIN public.main_categories mc ON sc.main_category_id = mc.id
-    LEFT JOIN public.locations seller_loc
+    INNER JOIN public.locations seller_loc
         ON i.user_id = seller_loc.user_id
-        AND seller_loc.is_primary = i.use_primary_location  -- ✅ 新版：根據物品設定選擇地點
+        AND seller_loc.is_primary = i.use_primary_location
     WHERE i.id = p_item_id;
+
+    -- =============================================
+    -- 5. 檢查查詢結果
+    -- =============================================
+    IF v_result IS NULL THEN
+        RETURN json_build_object(
+            'error', TRUE,
+            'code', 'ITEM_NOT_FOUND',
+            'message', '無法獲取物品詳情',
+            'item_id', p_item_id
+        );
+    END IF;
 
     RETURN v_result;
 
@@ -520,7 +570,10 @@ COMMENT ON FUNCTION public.get_item_details_with_location IS
 - 隱私保護：未登入和擁有者不顯示距離與座標
 - 回傳物品完整資訊、賣家資訊、分類資訊、距離資訊';
 
-RAISE NOTICE '✓ 已更新 get_item_details_with_location 函數支援 use_primary_location';
+DO $$
+BEGIN
+    RAISE NOTICE '✓ 已更新 get_item_details_with_location 函數支援 use_primary_location';
+END $$;
 
 COMMIT;
 
