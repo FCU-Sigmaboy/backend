@@ -22,8 +22,6 @@ BEGIN;
 DROP FUNCTION IF EXISTS public.create_item(INT, BIGINT, TEXT, TEXT, VARCHAR, INT, NUMERIC, TEXT[], TEXT[]);
 DROP FUNCTION IF EXISTS public.create_item(INT, TEXT, TEXT, VARCHAR, INT, NUMERIC, TEXT[], TEXT[]);
 
-RAISE NOTICE '✓ 已刪除舊版本 create_item 函數';
-
 -- =============================================
 -- 建立新版本的 create_item 函數（支援 use_primary_location）
 -- =============================================
@@ -186,14 +184,9 @@ SELECT create_item(1, ''標題'', ''描述'', ''良好'', 100);
 -- 使用次要地點
 SELECT create_item(1, ''標題'', ''描述'', ''良好'', 100, false);';
 
-RAISE NOTICE '✓ 已建立新版本 create_item 函數';
-
-COMMIT;
-
 -- =============================================
 -- Migration 完成通知
 -- =============================================
-
 DO $$
 BEGIN
     RAISE NOTICE '';

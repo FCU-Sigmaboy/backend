@@ -1,16 +1,16 @@
 import { supabase } from "../src/supabaseClient.js";
 
 // ===================================================================
-// ### 單一物品詳情 API - v3.0（2025-11-07）
-// ### Migration v2.0 變更說明：
-// ###   - ✅ 已使用 user_id 關聯位置（透過 items.user_id → locations.user_id）
-// ###   - ✅ 自動使用賣家的主要地點 (is_primary=true)
-// ###   - ✅ 自動使用買家的主要地點計算距離
-// ###   - ✅ 符合新的資料庫架構（已移除 items.location_id）
+// ### 單一物品詳情 API - v4.0（2025-11-09）
+// ### Migration v3.0 變更說明：
+// ###   - ✅ 支援 items.use_primary_location 欄位
+// ###   - ✅ 物品可選擇使用主要或次要地點
+// ###   - ✅ 根據 use_primary_location 自動關聯正確的地點
+// ###   - ✅ 已移除 items.location_id（已於前次遷移移除）
 // ###
 // ### 特性：
 // ###   - 買家位置：自動使用資料庫位置（主要地點優先）
-// ###   - 賣家位置：透過 items.user_id 自動查詢主要地點（is_primary=true）
+// ###   - 賣家位置：根據物品的 use_primary_location 決定使用主要或次要地點
 // ###   - 隱私保護：只有登入買家可查看距離資訊
 // ###   - 支援未登入用戶瀏覽物品基本資訊
 // ###   - PostGIS 精確距離計算
@@ -19,11 +19,12 @@ import { supabase } from "../src/supabaseClient.js";
 // ===================================================================
 
 /**
- * 【主要函數】獲取單一物品的完整詳情（v3.0 優化版）
+ * 【主要函數】獲取單一物品的完整詳情（v4.0 優化版）
  *
- * 🔄 Migration v2.0 更新 (2025-11-07):
- *   - 使用 items.user_id 關聯賣家位置（取代舊的 items.location_id）
- *   - 賣家位置: items.user_id → locations.user_id (is_primary=true)
+ * 🔄 Migration v3.0 更新 (2025-11-09):
+ *   - 支援 items.use_primary_location 欄位
+ *   - 物品可選擇使用主要地點 (true) 或次要地點 (false)
+ *   - 賣家位置: items.user_id + use_primary_location → locations (user_id, is_primary)
  *   - 買家位置: 自動從 locations 表取得登入者的主要地點
  *
  * 買家位置策略：
@@ -31,10 +32,11 @@ import { supabase } from "../src/supabaseClient.js";
  *   - 若無主要地點，則使用最早建立的地點
  *   - 若無任何地點，distance_km 為 null
  *
- * 賣家位置策略：
- *   - 透過 items.user_id 關聯 locations.user_id
- *   - 自動查詢該賣家的主要地點（is_primary=true）
- *   - 不再使用 items.location_id（已於 Migration v2.0 移除）
+ * 賣家位置策略（新增）：
+ *   - 根據物品的 use_primary_location 欄位決定
+ *   - true: 使用該賣家的主要地點（is_primary=true）
+ *   - false: 使用該賣家的次要地點（is_primary=false）
+ *   - 透過 items.user_id 和 use_primary_location 關聯 locations
  *
  * 隱私保護：
  *   - 只有已登入用戶可以查看距離資訊
@@ -296,13 +298,16 @@ export async function checkUserAuthentication() {
  *   updated_at: string,
  *
  *   // 距離計算（🔒 僅已登入且非擁有者可見）
- *   distance_km: number | null,     // 買家與賣家主要地點的距離（公里）
+ *   distance_km: number | null,     // 買家與賣家選定地點的距離（公里）
+ *
+ *   // 位置設定（v3.0 新增）
+ *   use_primary_location: boolean,  // true: 使用主要地點，false: 使用次要地點
  *
  *   // 互動狀態
  *   is_favorited: boolean,          // 當前用戶是否已收藏
  *   is_owner: boolean,              // 當前用戶是否為物品擁有者
  *
- *   // 賣家地點資訊
+ *   // 賣家地點資訊（根據 use_primary_location 決定）
  *   location: {
  *     id: number,
  *     formatted_address: string,    // ✅ 所有人可見（文字地址）
