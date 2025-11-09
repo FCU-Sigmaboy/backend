@@ -5,9 +5,9 @@
 **日期**: 2025-11-08  
 **版本**: v3.0  
 **相關 Migration**: 
-- `20251108000001_add_use_primary_location_to_items.sql`
-- `20251108000002_update_create_item_with_use_primary_location.sql`
-- `20251108000003_update_search_and_details_rpc_with_use_primary_location.sql`
+- `20251108000001_add_use_primary_location_to_items_jo.sql`
+- `20251108000002_update_create_item_with_use_primary_location_jo.sql`
+- `20251108000003_update_search_and_details_rpc_with_use_primary_location_jo.sql`
 
 ---
 
@@ -86,7 +86,7 @@ LEFT JOIN locations seller_loc
 
 ### 1. **`search_items`** (v6.0 → v7.0)
 
-**檔案**: `20251108000003_update_search_and_details_rpc_with_use_primary_location.sql`
+**檔案**: `20251108000003_update_search_and_details_rpc_with_use_primary_location_jo.sql`
 
 **變更**:
 ```sql
@@ -110,7 +110,7 @@ LEFT JOIN locations l
 
 ### 2. **`get_item_details_with_location`** (v3.0 → v4.0)
 
-**檔案**: `20251108000003_update_search_and_details_rpc_with_use_primary_location.sql`
+**檔案**: `20251108000003_update_search_and_details_rpc_with_use_primary_location_jo.sql`
 
 **變更**:
 ```sql
@@ -301,9 +301,9 @@ END IF;
 ## 📖 相關文件
 
 - [CHANGELOG v3.0](../../contracts/create_myItemsAPI/CHANGELOG_v3.0.md)
-- [Migration 20251108000001](./20251108000001_add_use_primary_location_to_items.sql)
-- [Migration 20251108000002](./20251108000002_update_create_item_with_use_primary_location.sql)
-- [Migration 20251108000003](./20251108000003_update_search_and_details_rpc_with_use_primary_location.sql)
+- [Migration 20251108000001](20251108000001_add_use_primary_location_to_items_jo.sql)
+- [Migration 20251108000002](20251108000002_update_create_item_with_use_primary_location_jo.sql)
+- [Migration 20251108000003](20251108000003_update_search_and_details_rpc_with_use_primary_location_jo.sql)
 
 ---
 
@@ -311,17 +311,17 @@ END IF;
 
 1. **執行 Migration 1**: 新增 `use_primary_location` 欄位
    ```bash
-   psql < 20251108000001_add_use_primary_location_to_items.sql
+   psql < 20251108000001_add_use_primary_location_to_items_jo.sql
    ```
 
 2. **執行 Migration 2**: 更新 `create_item` RPC
    ```bash
-   psql < 20251108000002_update_create_item_with_use_primary_location.sql
+   psql < 20251108000002_update_create_item_with_use_primary_location_jo.sql
    ```
 
 3. **執行 Migration 3**: 更新距離計算 RPC
    ```bash
-   psql < 20251108000003_update_search_and_details_rpc_with_use_primary_location.sql
+   psql < 20251108000003_update_search_and_details_rpc_with_use_primary_location_jo.sql
    ```
 
 4. **更新前端 API**: 部署新版 API 檔案（向後相容）
