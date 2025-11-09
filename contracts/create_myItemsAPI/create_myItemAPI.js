@@ -53,21 +53,24 @@ export async function uploadItemImages(files, userId, itemId) {
 }
 
 // ===================================================================
-// ### 刊登物品 API (Item APIs) - v2.0 (2025-11-07)
+// ### 刊登物品 API (Item APIs) - v3.0 (2025-11-08)
 // ===================================================================
 // ### 變更：
-// ###   - 移除 user_location_id 參數
-// ###   - 物品自動使用使用者的主要地點 (is_primary=true)
-// ###   - 使用者必須先設定地點才能刊登物品
+// ###   - 新增 use_primary_location 參數（預設 true）
+// ###   - true = 使用主要地點 (is_primary=true)
+// ###   - false = 使用次要地點 (is_primary=false)
+// ###   - 使用者限制：最多擁有 1 個主要地點 + 1 個次要地點
+// ###   - 透過 boolean 欄位 JOIN locations 表，避免儲存 location_id
 // ===================================================================
 
 /**
- * 【功能】刊登一個新物品 (RPC v2.0)
+ * 【功能】刊登一個新物品 (RPC v3.0)
  *
- * ⚠️ 重要變更 (2025-11-07):
- *   - 不再需要傳遞 user_location_id
- *   - 系統自動使用使用者的主要地點 (is_primary=true)
- *   - 使用者必須先在個人資料中設定地點
+ * ⚠️ 重要變更 (2025-11-08):
+ *   - 新增 use_primary_location 參數（可選，預設 true）
+ *   - true: 使用主要地點 (is_primary=true)
+ *   - false: 使用次要地點 (is_primary=false)
+ *   - 系統會驗證使用者是否有對應的地點設定
  *
  * @param {object} itemData - 來自前端表單的完整物件
  * - itemData.sub_category_id (Number) - 必填
@@ -75,20 +78,24 @@ export async function uploadItemImages(files, userId, itemId) {
  * - itemData.description (String) - 必填
  * - itemData.condition (String) - 必填 ('全新', '近全新', '良好', '普通', '需修理')
  * - itemData.price (Number) - 必填
+ * - itemData.use_primary_location (Boolean) - 可選，預設 true (主要地點)
  * - itemData.carbon_value (Number) - 可選
  * - itemData.image_urls (Array<String>) - 可選 (已上傳到 Storage 的 URL)
  * - itemData.tags (Array<String>) - 可選
- * @returns {Promise<object>} - 回傳新建的 item
+ * @returns {Promise<object>} - 回傳新建的 item 及地點資訊
  */
 export async function createItem(itemData) {
-  // 準備 RPC 參數 (不再包含 p_user_location_id)
+  // 準備 RPC 參數
   const rpcParams = {
     p_sub_category_id: itemData.sub_category_id,
-    // ❌ p_user_location_id: itemData.user_location_id, // 已移除
     p_title: itemData.title,
     p_description: itemData.description,
     p_condition: itemData.condition,
     p_price: itemData.price,
+    p_use_primary_location:
+      itemData.use_primary_location !== undefined
+        ? itemData.use_primary_location
+        : true, // 預設使用主要地點
     p_carbon_value: itemData.carbon_value,
     p_image_urls: itemData.image_urls,
     p_tags: itemData.tags,
@@ -99,7 +106,8 @@ export async function createItem(itemData) {
   if (error) {
     console.error("Supabase 刊登物品失敗:", error);
     // 可能的錯誤：
-    // - "請先在個人資料中設定地點後再刊登物品"
+    // - "請先在個人資料中設定主要地點後再刊登物品"
+    // - "請先在個人資料中設定次要地點後再刊登物品"
     // - "子分類不存在"
     // - "參數驗證失敗"
     throw new Error(error.message);
@@ -112,7 +120,7 @@ export async function createItem(itemData) {
  * 【功能】完整刊登流程 (上傳圖片 + 建立物品)
  * @param {object} itemData - 物品資料
  * @param {File[]} imageFiles - 圖片檔案陣列
- * @returns {Promise<object>} - 回傳新建的 item
+ * @returns {Promise<object>} - 回傳新建的 item 及地點資訊
  */
 export async function createItemWithImages(itemData, imageFiles = []) {
   try {
@@ -124,10 +132,15 @@ export async function createItemWithImages(itemData, imageFiles = []) {
       throw new Error("使用者未登入");
     }
 
-    // 2. 檢查使用者是否已設定地點 (可選的前置檢查)
-    const hasLocation = await checkUserHasLocation();
+    // 2. 檢查使用者是否已設定對應的地點
+    const usePrimary =
+      itemData.use_primary_location !== undefined
+        ? itemData.use_primary_location
+        : true;
+    const hasLocation = await checkUserHasLocation(usePrimary);
     if (!hasLocation) {
-      throw new Error("請先在個人資料中設定地點後再刊登物品");
+      const locationType = usePrimary ? "主要地點" : "次要地點";
+      throw new Error(`請先在個人資料中設定${locationType}後再刊登物品`);
     }
 
     // 3. 產生臨時 ID 用於圖片路徑
@@ -139,7 +152,7 @@ export async function createItemWithImages(itemData, imageFiles = []) {
       imageUrls = await uploadItemImages(imageFiles, user.id, tempItemId);
     }
 
-    // 5. 建立物品 (傳入圖片 URL，不需要 location_id)
+    // 5. 建立物品 (傳入圖片 URL 和地點選擇)
     const result = await createItem({
       ...itemData,
       image_urls: imageUrls,
@@ -153,10 +166,11 @@ export async function createItemWithImages(itemData, imageFiles = []) {
 }
 
 /**
- * 【輔助函數】檢查使用者是否已設定地點
- * @returns {Promise<boolean>} - 是否有地點
+ * 【輔助函數】檢查使用者是否已設定指定類型的地點
+ * @param {boolean} isPrimary - true=檢查主要地點, false=檢查次要地點
+ * @returns {Promise<boolean>} - 是否有該類型的地點
  */
-export async function checkUserHasLocation() {
+export async function checkUserHasLocation(isPrimary = true) {
   try {
     const {
       data: { user },
@@ -167,6 +181,7 @@ export async function checkUserHasLocation() {
       .from("locations")
       .select("id")
       .eq("user_id", user.id)
+      .eq("is_primary", isPrimary)
       .limit(1);
 
     return !error && data && data.length > 0;
@@ -177,37 +192,39 @@ export async function checkUserHasLocation() {
 }
 
 // ===================================================================
-// ### 使用範例 (Updated v2.0)
+// ### 使用範例 (v3.0)
 // ===================================================================
 
 /**
- * 範例 1：基本刊登流程
+ * 範例 1：基本刊登流程（使用主要地點）
  *
  * import { createItemWithImages, checkUserHasLocation } from '@/api/items';
  *
  * async function handleSubmit(formData, imageFiles) {
  *   try {
- *     // 可選：前置檢查
- *     const hasLocation = await checkUserHasLocation();
- *     if (!hasLocation) {
- *       alert('請先在個人資料中設定地點');
+ *     // 可選：前置檢查主要地點
+ *     const hasPrimaryLocation = await checkUserHasLocation(true);
+ *     if (!hasPrimaryLocation) {
+ *       alert('請先在個人資料中設定主要地點');
  *       router.push('/profile/locations');
  *       return;
  *     }
  *
- *     // 刊登物品（不需要 location_id）
- *     const item = await createItemWithImages({
+ *     // 刊登物品（預設使用主要地點）
+ *     const result = await createItemWithImages({
  *       sub_category_id: formData.category,
  *       title: formData.title,
  *       description: formData.description,
  *       condition: formData.condition,
  *       price: formData.price,
+ *       // use_primary_location: true,  // 可省略，預設為 true
  *       carbon_value: formData.carbonValue,
  *       tags: formData.tags
  *     }, imageFiles);
  *
- *     console.log('刊登成功:', item);
- *     router.push(`/items/${item.id}`);
+ *     console.log('刊登成功:', result.item);
+ *     console.log('使用地點:', result.location);
+ *     router.push(`/items/${result.item.id}`);
  *   } catch (error) {
  *     console.error('刊登失敗:', error.message);
  *     alert(error.message);
@@ -215,33 +232,76 @@ export async function checkUserHasLocation() {
  * }
  *
  *
- * 範例 2：簡化版（只有物品資料，無圖片）
+ * 範例 2：使用次要地點刊登
  *
  * import { createItem } from '@/api/items';
  *
- * const item = await createItem({
+ * const result = await createItem({
  *   sub_category_id: 1,
  *   title: '二手書桌',
  *   description: '九成新，自取',
  *   condition: '良好',
- *   price: 500
+ *   price: 500,
+ *   use_primary_location: false  // 使用次要地點
  * });
  *
+ * console.log('物品 ID:', result.item.id);
+ * console.log('銷售地點:', result.location.formatted_address);
  *
- * 範例 3：Vue 3 組件範例
+ *
+ * 範例 3：查詢物品及地點資訊（使用 View）
+ *
+ * // 直接使用 Supabase 客戶端查詢 View
+ * const { data: item } = await supabase
+ *   .from('items_with_location')
+ *   .select('*')
+ *   .eq('id', itemId)
+ *   .single();
+ *
+ * console.log('物品標題:', item.title);
+ * console.log('銷售地點:', item.location_address);
+ * console.log('使用主要地點:', item.use_primary_location);
+ * console.log('地點類型:', item.location_type);
+ *
+ *
+ * 範例 4：查詢使用者的所有地點
+ *
+ * // 前端直接查詢 locations 表
+ * const { data: { user } } = await supabase.auth.getUser();
+ *
+ * const { data: locations } = await supabase
+ *   .from('locations')
+ *   .select('*')
+ *   .eq('user_id', user.id)
+ *   .order('is_primary', { ascending: false });  // 主要地點排在前面
+ *
+ * const primaryLocation = locations.find(loc => loc.is_primary === true);
+ * const secondaryLocation = locations.find(loc => loc.is_primary === false);
+ *
+ *
+ * 範例 5：更新物品地點（使用 Supabase 直接更新）
+ *
+ * // 將物品切換至次要地點
+ * const { data, error } = await supabase
+ *   .from('items')
+ *   .update({ use_primary_location: false })
+ *   .eq('id', itemId)
+ *   .select();
+ *
+ * if (error) {
+ *   console.error('更新失敗:', error);
+ * } else {
+ *   console.log('已切換至次要地點');
+ * }
+ *
+ *
+ * 範例 6：Vue 3 組件範例
  *
  * <template>
  *   <form @submit.prevent="submitItem">
- *     <!-- 不再需要地點選擇器 -->
- *     <!-- ❌ 舊版：<select v-model="formData.location_id">...</select> -->
+ *     <h2>刊登物品</h2>
  *
- *     <!-- ✅ 新版：顯示提示訊息 -->
- *     <div v-if="!hasLocation" class="warning">
- *       ⚠️ 請先
- *       <router-link to="/profile/locations">設定您的地點</router-link>
- *       才能刊登物品
- *     </div>
- *
+ *     <!-- 基本資訊 -->
  *     <input v-model="formData.title" placeholder="標題" required />
  *     <textarea v-model="formData.description" placeholder="描述" required />
  *     <select v-model="formData.condition" required>
@@ -252,31 +312,106 @@ export async function checkUserHasLocation() {
  *       <option value="需修理">需修理</option>
  *     </select>
  *     <input v-model.number="formData.price" type="number" placeholder="價格" required />
+ *
+ *     <!-- 地點選擇 -->
+ *     <div class="location-section" v-if="userLocations.length > 0">
+ *       <h3>📍 銷售地點</h3>
+ *       <label v-if="primaryLocation">
+ *         <input
+ *           type="radio"
+ *           v-model="formData.use_primary_location"
+ *           :value="true"
+ *         />
+ *         主要地點
+ *         <span class="location-preview">
+ *           ({{ primaryLocation.formatted_address }})
+ *         </span>
+ *       </label>
+ *       <label v-if="secondaryLocation">
+ *         <input
+ *           type="radio"
+ *           v-model="formData.use_primary_location"
+ *           :value="false"
+ *         />
+ *         次要地點
+ *         <span class="location-preview">
+ *           ({{ secondaryLocation.formatted_address }})
+ *         </span>
+ *       </label>
+ *       <p v-if="!secondaryLocation" class="hint">
+ *         💡 您可以在個人資料中新增次要地點
+ *       </p>
+ *     </div>
+ *
+ *     <!-- 圖片上傳 -->
  *     <input type="file" multiple @change="handleImageSelect" accept="image/*" />
  *
- *     <button type="submit" :disabled="!hasLocation || isSubmitting">
+ *     <button type="submit" :disabled="!canSubmit || isSubmitting">
  *       {{ isSubmitting ? '刊登中...' : '刊登物品' }}
  *     </button>
  *   </form>
  * </template>
  *
  * <script setup>
- * import { ref, onMounted } from 'vue';
+ * import { ref, computed, onMounted } from 'vue';
+ * import { supabase } from '@/supabaseClient';
  * import { createItemWithImages, checkUserHasLocation } from '@/api/items';
  *
- * const hasLocation = ref(false);
  * const isSubmitting = ref(false);
+ * const userLocations = ref([]);
+ * const imageFiles = ref([]);
+ *
  * const formData = ref({
  *   sub_category_id: 1,
  *   title: '',
  *   description: '',
  *   condition: '良好',
- *   price: 0
+ *   price: 0,
+ *   use_primary_location: true  // 預設使用主要地點
  * });
- * const imageFiles = ref([]);
+ *
+ * // 計算主要地點
+ * const primaryLocation = computed(() => {
+ *   return userLocations.value.find(loc => loc.is_primary === true);
+ * });
+ *
+ * // 計算次要地點
+ * const secondaryLocation = computed(() => {
+ *   return userLocations.value.find(loc => loc.is_primary === false);
+ * });
+ *
+ * // 是否可以提交
+ * const canSubmit = computed(() => {
+ *   if (formData.value.use_primary_location) {
+ *     return !!primaryLocation.value;
+ *   } else {
+ *     return !!secondaryLocation.value;
+ *   }
+ * });
  *
  * onMounted(async () => {
- *   hasLocation.value = await checkUserHasLocation();
+ *   try {
+ *     // 獲取當前使用者
+ *     const { data: { user } } = await supabase.auth.getUser();
+ *     if (!user) return;
+ *
+ *     // 查詢使用者的所有地點
+ *     const { data: locations } = await supabase
+ *       .from('locations')
+ *       .select('*')
+ *       .eq('user_id', user.id)
+ *       .order('is_primary', { ascending: false });
+ *
+ *     userLocations.value = locations || [];
+ *
+ *     // 如果沒有主要地點，提示使用者設定
+ *     if (!primaryLocation.value) {
+ *       alert('請先設定您的主要地點');
+ *       router.push('/profile/locations');
+ *     }
+ *   } catch (error) {
+ *     console.error('獲取地點失敗:', error);
+ *   }
  * });
  *
  * function handleImageSelect(event) {
@@ -284,17 +419,20 @@ export async function checkUserHasLocation() {
  * }
  *
  * async function submitItem() {
- *   if (!hasLocation.value) {
- *     alert('請先設定您的地點');
+ *   if (!canSubmit.value) {
+ *     const locationType = formData.value.use_primary_location ? '主要' : '次要';
+ *     alert(`請先設定您的${locationType}地點`);
  *     return;
  *   }
  *
  *   isSubmitting.value = true;
  *
  *   try {
- *     const item = await createItemWithImages(formData.value, imageFiles.value);
+ *     const result = await createItemWithImages(formData.value, imageFiles.value);
  *     alert('刊登成功！');
- *     router.push(`/items/${item.id}`);
+ *     console.log('物品資訊:', result.item);
+ *     console.log('使用地點:', result.location);
+ *     router.push(`/items/${result.item.id}`);
  *   } catch (error) {
  *     alert(`刊登失敗: ${error.message}`);
  *   } finally {
@@ -302,62 +440,27 @@ export async function checkUserHasLocation() {
  *   }
  * }
  * </script>
- */
-
-// ===================================================================
-// ### Migration 變更說明 (2025-11-07)
-// ===================================================================
-
-/**
- * 【變更前 (v1.0)】
- * - 需要傳遞 user_location_id
- * - 每個物品綁定一個固定的 location_id
- * - 使用者需要在刊登時選擇地點
  *
- * const item = await createItem({
- *   sub_category_id: 1,
- *   user_location_id: 123,  // ❌ 需要手動選擇
- *   title: '物品標題',
- *   // ...
- * });
+ * <style scoped>
+ * .location-section {
+ *   margin: 1rem 0;
+ *   padding: 1rem;
+ *   border: 1px solid #ddd;
+ *   border-radius: 8px;
+ * }
  *
+ * .location-preview {
+ *   color: #666;
+ *   font-size: 0.9em;
+ *   margin-left: 0.5rem;
+ * }
  *
- * 【變更後 (v2.0)】
- * - 不需要傳遞 user_location_id
- * - 物品自動使用使用者的主要地點
- * - 使用者更新主要地點時，所有物品自動更新
- *
- * const item = await createItem({
- *   sub_category_id: 1,
- *   // user_location_id 已移除 ✅
- *   title: '物品標題',
- *   // ...
- * });
- *
- *
- * 【優勢】
- * 1. 簡化 UI/UX - 不需要地點選擇器
- * 2. 減少錯誤 - 不會選錯地點
- * 3. 自動更新 - 更改主要地點後，所有物品自動使用新地點
- * 4. 符合邏輯 - 物品屬於使用者，地點也屬於使用者
- *
- *
- * 【注意事項】
- * 1. 使用者必須先設定至少一個地點
- * 2. 建議設定主要地點 (is_primary=true)
- * 3. 如果沒有主要地點，系統會使用建立時間最早的地點
- * 4. 刊登前可使用 checkUserHasLocation() 檢查
- *
- *
- * 【錯誤處理】
- * - "請先在個人資料中設定地點後再刊登物品"
- *   → 使用者沒有任何地點，引導至設定頁面
- *
- * - "子分類不存在"
- *   → sub_category_id 無效
- *
- * - "參數驗證失敗"
- *   → 必填欄位缺失或格式錯誤
+ * .hint {
+ *   color: #888;
+ *   font-size: 0.85em;
+ *   margin-top: 0.5rem;
+ * }
+ * </style>
  */
 
 // ===================================================================
@@ -367,17 +470,46 @@ export async function checkUserHasLocation() {
 /**
  * interface CreateItemParams {
  *   sub_category_id: number;
- *   // user_location_id: number;  // ❌ v2.0 已移除
  *   title: string;
  *   description: string;
- *   condition: 'full_new' | 'like_new' | 'good' | 'fair' | 'poor';
+ *   condition: '全新' | '近全新' | '良好' | '普通' | '需修理';
  *   price: number;
+ *   use_primary_location?: boolean;  // v3.0 新增，預設 true
  *   carbon_value?: number;
  *   image_urls?: string[];
  *   tags?: string[];
  * }
  *
  * interface CreateItemResponse {
+ *   success: boolean;
+ *   item: {
+ *     id: number;
+ *     title: string;
+ *     price: number;
+ *     use_primary_location: boolean;
+ *     created_at: string;
+ *   };
+ *   location: {
+ *     id: number;
+ *     formatted_address: string;
+ *     type: string;
+ *     is_primary: boolean;
+ *   };
+ *   message: string;
+ * }
+ *
+ * interface Location {
+ *   id: number;
+ *   user_id: string;
+ *   coordinates: any;
+ *   type: '家' | '公司' | '其他';
+ *   is_primary: boolean;
+ *   formatted_address: string;
+ *   created_at: string;
+ *   updated_at: string;
+ * }
+ *
+ * interface ItemWithLocation {
  *   id: number;
  *   user_id: string;
  *   sub_category_id: number;
@@ -389,7 +521,13 @@ export async function checkUserHasLocation() {
  *   carbon_value: number;
  *   image_urls: string[];
  *   tags: string[];
+ *   use_primary_location: boolean;
  *   created_at: string;
  *   updated_at: string;
+ *   location_id: number;
+ *   location_coordinates: any;
+ *   location_type: string;
+ *   location_address: string;
+ *   location_is_primary: boolean;
  * }
  */

@@ -1,28 +1,32 @@
-import { supabase } from 'src/supabaseClient'; // 假設您已在 src/supabaseClient.js 初始化
+import { supabase } from "src/supabaseClient"; // 假設您已在 src/supabaseClient.js 初始化
 
 // ===================================================================
-// ### 物品搜尋 API (Item Search API) - v6.0 (2025-11-07)
+// ### 物品搜尋 API (Item Search API) - v7.0 (2025-11-08)
 // ===================================================================
-// ### Migration v2.0 變更說明：
-// ###   - ✅ 已使用 user_id 關聯位置（透過 items.user_id → locations.user_id）
-// ###   - ✅ 自動使用賣家的主要地點 (is_primary=true)
-// ###   - ✅ 自動使用買家的主要地點計算距離
+// ### Migration v3.0 變更說明：
+// ###   - ✅ 支援 items.use_primary_location 欄位
+// ###   - ✅ 賣家地點：根據物品的 use_primary_location 動態選擇主要或次要地點
+// ###   - ✅ 買家地點：固定使用買家的主要地點計算距離
+// ###   - ✅ 距離計算：買家主要地點 ↔ 賣家物品地點（主要或次要）
 // ###   - ✅ 不再需要傳遞 latitude/longitude 參數
 // ###   - ✅ 符合新的資料庫架構（已移除 items.location_id）
 // ===================================================================
 
 /**
- * 統一的物品搜尋函式 (RPC v6.0)
+ * 統一的物品搜尋函式 (RPC v7.0)
  *
- * 🔄 Migration v2.0 更新 (2025-11-07):
+ * 🔄 Migration v3.0 更新 (2025-11-08):
+ *   - 支援 items.use_primary_location 欄位
+ *   - 賣家地點根據物品設定動態選擇（主要或次要地點）
  *   - 不再需要傳入經緯度參數
  *   - 自動使用登入者的主要地點計算距離
- *   - 使用 items.user_id 關聯賣家位置（取代舊的 items.location_id）
  *
  * 位置關聯邏輯:
- *   - 買家位置: 自動從 locations 表取得登入者的主要地點
- *   - 賣家位置: items.user_id → locations.user_id (is_primary=true)
- *   - 距離計算: PostGIS ST_Distance 計算買賣雙方主要地點的距離
+ *   - 買家位置: 自動從 locations 表取得登入者的主要地點 (is_primary=true)
+ *   - 賣家位置: items.user_id → locations.user_id (is_primary=items.use_primary_location)
+ *     * 如果 use_primary_location=true → 使用賣家的主要地點
+ *     * 如果 use_primary_location=false → 使用賣家的次要地點
+ *   - 距離計算: PostGIS ST_Distance 計算買家主要地點與賣家物品地點的距離
  *
  * @param {object} filters - 篩選條件
  * @param {number} [filters.distance_range_km] - (可選) 搜尋半徑 (公里)
@@ -37,42 +41,45 @@ import { supabase } from 'src/supabaseClient'; // 假設您已在 src/supabaseCl
  * @returns {Promise<Array | null>} - 回傳物品陣列, 未登入回傳 null
  */
 export async function searchItems(filters = {}) {
+  // 1. 檢查使用者是否登入 (RPC 也會檢查)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    console.warn("searchItems: User not logged in.");
+    return null; // 或者您可以允許未登入搜尋，但距離會是 NULL
+  }
 
-    // 1. 檢查使用者是否登入 (RPC 也會檢查)
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-        console.warn('searchItems: User not logged in.');
-        return null; // 或者您可以允許未登入搜尋，但距離會是 NULL
-    }
+  // 2. 準備傳遞給 RPC 函式的參數
+  // ✅ Migration v2.0: 不再需要 p_user_latitude, p_user_longitude
+  // ✅ RPC 會自動使用登入者的主要地點計算距離
+  const rpcParams = {
+    p_distance_range_km: filters.distance_range_km || null,
+    p_main_category_id: filters.main_category_id || null,
+    p_sub_category_id: filters.sub_category_id || null,
+    p_keyword: filters.keyword || null,
+    p_user_id: filters.user_id || null,
+    p_page: filters.page || 1,
+    p_size: filters.size || 20,
+    p_sort_by: filters.sort_by || "created_at",
+    p_sort_direction: filters.sort_direction || "desc",
+  };
 
-    // 2. 準備傳遞給 RPC 函式的參數
-    // ✅ Migration v2.0: 不再需要 p_user_latitude, p_user_longitude
-    // ✅ RPC 會自動使用登入者的主要地點計算距離
-    const rpcParams = {
-        p_distance_range_km: filters.distance_range_km || null,
-        p_main_category_id: filters.main_category_id || null,
-        p_sub_category_id: filters.sub_category_id || null,
-        p_keyword: filters.keyword || null,
-        p_user_id: filters.user_id || null,
-        p_page: filters.page || 1,
-        p_size: filters.size || 20,
-        p_sort_by: filters.sort_by || 'created_at',
-        p_sort_direction: filters.sort_direction || 'desc'
-    };
+  // 3. 呼叫 RPC 函式 (v7.0 - 支援 use_primary_location)
+  const { data, error } = await supabase.rpc("search_items", rpcParams);
 
-    // 3. 呼叫 RPC 函式 (v6.0 - 使用 user_id 關聯位置)
-    const { data, error } = await supabase.rpc('search_items', rpcParams);
+  if (error) {
+    console.error("Supabase 搜尋物品失敗:", error);
+    // 可能的錯誤訊息:
+    // - "請先設定您的主要地點" (如果使用者沒有任何地點)
+    throw new Error(error.message);
+  }
 
-    if (error) {
-        console.error('Supabase 搜尋物品失敗:', error);
-        // 可能的錯誤訊息:
-        // - "請先設定您的主要地點" (如果使用者沒有任何地點)
-        throw new Error(error.message);
-    }
-
-    // 4. RPC 回傳的 data 就是完美的 DTO，直接回傳
-    // 每個物品的 distance_km 已自動計算（基於買賣雙方的主要地點）
-    return data;
+  // 4. RPC 回傳的 data 就是完美的 DTO，直接回傳
+  // 每個物品的 distance_km 已自動計算（基於買家主要地點與賣家物品地點）
+  // 賣家物品地點由 items.use_primary_location 決定（主要或次要地點）
+  return data;
 }
 
 /* data 範例

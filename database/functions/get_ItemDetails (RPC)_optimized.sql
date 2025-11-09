@@ -1,23 +1,23 @@
 -- ####################################################################
--- ### 單一物品詳情 (RPC) - 優化版本
--- ### 日期：2025-11-01
--- ### 版本：v2.5 (精簡版本)
+-- ### 單一物品詳情 (RPC) - v3.0 優化版本
+-- ### 日期：2025-11-09
+-- ### 版本：v3.0（支援 use_primary_location）
 -- ### 改進項目：
--- ###   1. 添加完整的異常處理
--- ###   2. 使用 JSONB 替代 JSON（更好的效能）
--- ###   3. 使用 CTE 減少多次查詢
--- ###   4. 優化 EXISTS 子查詢為 LEFT JOIN
--- ###   5. 添加參數驗證
--- ###   6. 添加函數註解
--- ###   7. 標準化錯誤訊息格式
--- ###   8. 使用 LEFT JOIN LATERAL 優化語意
--- ###   9. 提前過濾 listing_status（減少資料處理）
--- ###   10. 添加地理空間索引（GiST）
--- ###   11. 移除未使用變數
--- ###   12. 修正冗餘 COALESCE 和 NULL 檢查
--- ###   13. 移除冗餘 ELSE NULL 語句
--- ###   14. 簡化排序語句
--- ###   15. 移除向後相容函數（新專案無需兼容）
+-- ###   1. ✅ 新增 items.use_primary_location 支援
+-- ###   2. ✅ 根據 use_primary_location 欄位決定使用哪個地點
+-- ###   3. ✅ 物品可選擇使用主要或次要地點
+-- ###   4. 添加完整的異常處理
+-- ###   5. 使用 JSONB 替代 JSON（更好的效能）
+-- ###   6. 使用 CTE 減少多次查詢
+-- ###   7. 優化 EXISTS 子查詢為 LEFT JOIN
+-- ###   8. 添加參數驗證
+-- ###   9. 添加函數註解
+-- ###   10. 標準化錯誤訊息格式
+-- ###   11. 使用 LEFT JOIN LATERAL 優化語意
+-- ###   12. 提前過濾 listing_status（減少資料處理）
+-- ###   13. 添加地理空間索引（GiST）
+-- ###   14. 移除未使用變數
+-- ###   15. 修正冗餘 COALESCE 和 NULL 檢查
 -- ####################################################################
 
 -- =============================================
@@ -88,12 +88,13 @@ BEGIN
             i.created_at,
             i.updated_at,
             i.user_id as owner_id,
+            i.use_primary_location,  -- 新增：物品使用位置設定
             -- 賣家資訊
             u.id as seller_id,
             u.nickname as seller_nickname,
             u.profile_picture_url as seller_avatar,
             u.avg_rating as seller_rating,
-            -- 賣家位置
+            -- 賣家位置（根據 use_primary_location 決定使用主要或次要地點）
             seller_loc.id as location_id,
             seller_loc.formatted_address as location_address,
             seller_loc.type as location_type,
@@ -112,7 +113,7 @@ BEGIN
             ul.location_source as user_location_source
         FROM public.items i
         INNER JOIN public.users u ON i.user_id = u.id  -- 改為 INNER JOIN：物品必須有擁有者
-        LEFT JOIN public.locations seller_loc ON i.user_id = seller_loc.user_id AND seller_loc.is_primary = true
+        LEFT JOIN public.locations seller_loc ON i.user_id = seller_loc.user_id AND seller_loc.is_primary = i.use_primary_location
         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
         LEFT JOIN public.main_categories mc ON sc.main_category_id = mc.id
         LEFT JOIN public.favorites fav ON fav.item_id = i.id AND fav.user_id = v_current_uid
@@ -137,6 +138,7 @@ BEGIN
             'tags', tags,
             'created_at', created_at,
             'updated_at', updated_at,
+            'use_primary_location', use_primary_location,
 
             -- 距離計算（僅在已登入且非擁有者時顯示）
             'distance_km', CASE
@@ -262,11 +264,14 @@ $$;
 -- =============================================
 COMMENT ON FUNCTION public.get_item_details_with_location(BIGINT) IS
 '取得單一物品詳情，包含距離計算和隱私保護。
-- 買家僅使用資料庫地點計算距離
+v3.0 更新 (2025-11-09):
+- 根據 items.use_primary_location 欄位決定使用賣家的主要或次要地點
+- 支援物品選擇使用主要位置 (true) 或次要位置 (false)
+- 買家始終使用資料庫主要地點計算距離
 - 未登入或查看自己的物品時，不顯示距離資訊和精確座標
 - 優化版本：使用 CTE、JSONB、完整的錯誤處理
-- 版本：v2.5
-- 最後更新：2025-11-01';
+- 版本：v3.0
+- 最後更新：2025-11-09';
 
 
 -- =============================================
