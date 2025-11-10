@@ -6,6 +6,8 @@
 -- 2. users.avatar_url -> users.profile_picture_url
 -- 3. 使用 v_conv_id 避免變數名稱衝突
 -- 4. 使用命名約束
+-- 5. 版本更新註釋：修正了查詢商品時引用不存在的 status 欄位，改為 listing_status。
+
 -- ============================================================================
 
 -- Step 1: 確保約束有名稱
@@ -448,7 +450,7 @@ BEGIN
         i.title AS item_title,
         i.price AS item_price,
         i.image_urls[1] AS item_image_url,
-        i.status AS item_status,
+        i.listing_status AS item_status,
         ci.added_by_user_id,
         u.nickname AS added_by_user_name,
         ci.created_at AS added_at,
