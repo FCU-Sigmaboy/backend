@@ -1,3 +1,5 @@
+// 版本更新註釋：2025-11-10 修復 Storage 圖片無快取標頭，加入 cacheControl 減少 Egress 流量
+
 import { supabase } from "src/supabaseClient";
 
 // ===================================================================
@@ -15,20 +17,25 @@ export async function uploadItemImage(file, userId, itemId) {
   const filename = `${Date.now()}-${file.name}`;
   const filePath = `${userId}/${itemId}/${filename}`;
 
-  // 上傳檔案到 items bucket
+  // 上傳檔案到 items bucket，設定快取標頭
   const { data, error } = await supabase.storage
     .from("items")
-    .upload(filePath, file);
+    .upload(filePath, file, {
+      cacheControl: "public, max-age=31536000, immutable",
+      upsert: false,
+    });
 
   if (error) {
     console.error("圖片上傳失敗:", error);
     throw new Error(error.message);
   }
 
-  // 獲取公開 URL
+  // 獲取公開 URL (包含快取標頭)
   const {
     data: { publicUrl },
-  } = supabase.storage.from("items").getPublicUrl(data.path);
+  } = supabase.storage.from("items").getPublicUrl(data.path, {
+    download: false,
+  });
 
   return publicUrl;
 }
