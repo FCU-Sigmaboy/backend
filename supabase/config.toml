@@ -1,3 +1,4 @@
+# 版本更新註釋：2025-11-10 更新 Storage 配置降低檔案大小限制以減少 Egress 流量
 # For detailed configuration reference documentation, visit:
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
@@ -61,12 +62,12 @@ enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = [
-    './seeds/01_users.sql',
-    './seeds/02_profiles.sql',
-    './seeds/03_locations.sql',
-    './seeds/04_categories.sql',
-    './seeds/05_items.sql',
-    './seeds/06_interactions.sql'
+  "./seeds/01_users.sql",
+  "./seeds/02_profiles.sql",
+  "./seeds/03_locations.sql",
+  "./seeds/04_categories.sql",
+  "./seeds/05_items.sql",
+  "./seeds/06_interactions.sql"
 ]
 
 [db.network_restrictions]
@@ -110,18 +111,22 @@ port = 54324
 [storage]
 enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+file_size_limit = "10MiB"
 
 # Image transformation API is available to Supabase Pro plan.
 # [storage.image_transformation]
 # enabled = true
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+# Configure local storage buckets with cache settings
+[storage.buckets.items]
+public = true
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
+[storage.buckets.avatars]
+public = true
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 
 [auth]
 enabled = true
