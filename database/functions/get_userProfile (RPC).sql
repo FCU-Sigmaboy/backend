@@ -15,6 +15,12 @@ REPLACE FUNCTION public.get_public_user_profile(p_user_id UUID -- 要查詢的�
     DECLARE
     v_current_uid UUID := auth.uid(); -- *** 獲取 "當前登入者" ID ***
 BEGIN
+    -- ========================================
+    -- 1. 驗證使用者登入狀態
+    -- ========================================
+    IF v_current_uid IS NULL THEN
+        RAISE EXCEPTION '使用者未登入，無法執行搜尋';
+BEGIN
     -- 使用 json_build_object 來建構您需要的 DTO
     RETURN
 (SELECT json_build_object(
@@ -32,7 +38,7 @@ BEGIN
                                     FROM public.following
                                     WHERE following_id = u.id -- u.id = p_user_id
                 ),
-            -- *** 新增的欄位 ***
+            -- *** 新增欄位 ***
             -- 檢查 "我" (v_current_uid) 是否追蹤了 "這個人" (p_user_id)
                 'followed_at', (SELECT f.created_at
                                 FROM public.following f
