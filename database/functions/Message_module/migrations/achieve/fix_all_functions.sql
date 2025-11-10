@@ -16,10 +16,10 @@ BEGIN
     ) THEN
         ALTER TABLE public.conversation_items_v2
         DROP CONSTRAINT IF EXISTS conversation_items_v2_conversation_id_item_id_key CASCADE;
-        
+
         ALTER TABLE public.conversation_items_v2
         ADD CONSTRAINT uq_conv_items_v2 UNIQUE (conversation_id, item_id);
-        
+
         RAISE NOTICE '✓ 已建立唯一約束: uq_conv_items_v2';
     END IF;
 END $$;
@@ -445,13 +445,13 @@ BEGIN
     RETURN QUERY
     SELECT
         ci.item_id,
-        i.title,
-        i.price,
-        i.image_url,
-        i.status,
+        i.title AS item_title,
+        i.price AS item_price,
+        i.image_urls[1] AS item_image_url,
+        i.status AS item_status,
         ci.added_by_user_id,
-        u.nickname,
-        ci.created_at,
+        u.nickname AS added_by_user_name,
+        ci.created_at AS added_at,
         (SELECT COUNT(*) FROM public.conversation_messages_v2 m WHERE m.conversation_id = p_conversation_id AND m.related_item_id = ci.item_id AND m.is_deleted = false)
     FROM public.conversation_items_v2 ci
     LEFT JOIN public.items i ON i.id = ci.item_id

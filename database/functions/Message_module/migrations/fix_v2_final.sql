@@ -515,6 +515,7 @@ BEGIN
 END;
 $$;
 
+-- 版本更新註釋：修復了在查詢對話中商品時使用錯誤列名導致的 42703 錯誤。
 COMMENT ON FUNCTION mark_messages_as_read_v2 IS 'v2: 標記訊息為已讀';
 
 GRANT EXECUTE ON FUNCTION mark_messages_as_read_v2 TO authenticated;
@@ -558,13 +559,13 @@ BEGIN
     RETURN QUERY
     SELECT
         ci.item_id,
-        i.title,
-        i.price,
-        i.image_url,
-        i.status,
+        i.title AS item_title,
+        i.price AS item_price,
+        i.image_urls[1] AS item_image_url,
+        i.status AS item_status,
         ci.added_by_user_id,
-        u.name,
-        ci.created_at,
+        u.name AS added_by_user_name,
+        ci.created_at AS added_at,
         (
             SELECT COUNT(*)
             FROM public.conversation_messages_v2 m

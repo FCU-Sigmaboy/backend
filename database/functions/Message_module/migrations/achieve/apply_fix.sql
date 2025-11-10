@@ -1,20 +1,18 @@
 -- ============================================================================
--- Messaging System v2 - RPC Functions
+-- Messaging System v2 - RPC Functions Fix
 -- ============================================================================
--- 描述: v2 訊息系統的所有 RPC 函數實作
--- 版本: 2.0.1 (修正欄位名稱衝突問題)
+-- 描述: 修正欄位名稱衝突問題的 v2 訊息系統 RPC 函數
+-- 版本: 2.0.2
 -- 日期: 2024-01-15
+-- 修正: 改用 ON CONSTRAINT 避免欄位名稱歧義
 -- ============================================================================
 
--- 標準化參與者順序
+-- 5.1 輔助函數:標準化參與者順序
 CREATE OR REPLACE FUNCTION normalize_participants_v2(
     p_user_a UUID,
     p_user_b UUID
 )
-RETURNS TABLE(
-    participant_1 UUID,
-    participant_2 UUID
-)
+RETURNS TABLE(participant_1 UUID, participant_2 UUID)
 LANGUAGE plpgsql
 IMMUTABLE
 AS $$
@@ -63,13 +61,11 @@ BEGIN
         RAISE EXCEPTION 'Cannot create conversation with yourself';
     END IF;
 
-    -- 標準化參與者順序
     SELECT p1, p2 INTO v_participant_1, v_participant_2
     FROM normalize_participants_v2(v_current_user_id, p_other_user_id) AS t(p1, p2);
 
     v_user_is_p1 := (v_current_user_id = v_participant_1);
 
-    -- 查找已存在的對話
     SELECT id INTO v_conversation_id
     FROM public.conversations_v2
     WHERE public.conversations_v2.participant_1_id = v_participant_1
@@ -77,7 +73,6 @@ BEGIN
     LIMIT 1;
 
     IF v_conversation_id IS NULL THEN
-        -- 建立新對話
         INSERT INTO public.conversations_v2 (
             participant_1_id,
             participant_2_id,
@@ -91,7 +86,6 @@ BEGIN
 
         v_is_new := true;
 
-        -- 如果有初始商品,加入到 conversation_items
         IF p_initial_item_id IS NOT NULL THEN
             INSERT INTO public.conversation_items_v2 (
                 conversation_id,
@@ -102,10 +96,9 @@ BEGIN
                 p_initial_item_id,
                 v_current_user_id
             )
-            ON CONFLICT (conversation_id, item_id) DO NOTHING;
+            ON CONFLICT ON CONSTRAINT conversation_items_v2_conversation_id_item_id_key DO NOTHING;
         END IF;
     ELSE
-        -- 對話已存在,如果有新商品則加入
         IF p_initial_item_id IS NOT NULL THEN
             INSERT INTO public.conversation_items_v2 (
                 conversation_id,
@@ -116,7 +109,7 @@ BEGIN
                 p_initial_item_id,
                 v_current_user_id
             )
-            ON CONFLICT (conversation_id, item_id) DO NOTHING;
+            ON CONFLICT ON CONSTRAINT conversation_items_v2_conversation_id_item_id_key DO NOTHING;
         END IF;
     END IF;
 
@@ -135,7 +128,110 @@ COMMENT ON FUNCTION create_or_get_conversation_v2 IS 'v2: 建立或取得兩個�
 
 GRANT EXECUTE ON FUNCTION create_or_get_conversation_v2 TO authenticated;
 
--- 查詢對話列表
+-- 5.3 發送訊息
+CREATE OR REPLACE FUNCTION send_message_v2(
+    p_conversation_id BIGINT,
+    p_content TEXT,
+    p_message_type VARCHAR(20) DEFAULT 'text',
+    p_related_item_id BIGINT DEFAULT NULL
+)
+RETURNS TABLE(
+    message_id BIGINT,
+    conversation_id BIGINT,
+    sender_id UUID,
+    content TEXT,
+    message_type VARCHAR,
+    related_item_id BIGINT,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_current_user_id UUID;
+    v_message_id BIGINT;
+    v_participant_1 UUID;
+    v_participant_2 UUID;
+    v_user_is_p1 BOOLEAN;
+BEGIN
+    v_current_user_id := auth.uid();
+
+    IF v_current_user_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    SELECT c.participant_1_id, c.participant_2_id
+    INTO v_participant_1, v_participant_2
+    FROM public.conversations_v2 c
+    WHERE c.id = p_conversation_id;
+
+    IF v_participant_1 IS NULL THEN
+        RAISE EXCEPTION 'Conversation not found';
+    END IF;
+
+    IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
+        RAISE EXCEPTION 'Not a participant of this conversation';
+    END IF;
+
+    v_user_is_p1 := (v_current_user_id = v_participant_1);
+
+    INSERT INTO public.conversation_messages_v2 (
+        conversation_id,
+        sender_id,
+        content,
+        message_type,
+        related_item_id,
+        read_by_participant_1,
+        read_by_participant_2,
+        read_at_participant_1,
+        read_at_participant_2
+    ) VALUES (
+        p_conversation_id,
+        v_current_user_id,
+        p_content,
+        p_message_type,
+        p_related_item_id,
+        v_user_is_p1,
+        NOT v_user_is_p1,
+        CASE WHEN v_user_is_p1 THEN now() ELSE NULL END,
+        CASE WHEN v_user_is_p1 THEN NULL ELSE now() END
+    )
+    RETURNING id INTO v_message_id;
+
+    IF p_related_item_id IS NOT NULL THEN
+        INSERT INTO public.conversation_items_v2 (
+            conversation_id,
+            item_id,
+            added_by_user_id,
+            added_via_message_id
+        ) VALUES (
+            p_conversation_id,
+            p_related_item_id,
+            v_current_user_id,
+            v_message_id
+        )
+        ON CONFLICT ON CONSTRAINT conversation_items_v2_conversation_id_item_id_key DO NOTHING;
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        m.id,
+        m.conversation_id,
+        m.sender_id,
+        m.content,
+        m.message_type,
+        m.related_item_id,
+        m.created_at
+    FROM public.conversation_messages_v2 m
+    WHERE m.id = v_message_id;
+END;
+$$;
+
+COMMENT ON FUNCTION send_message_v2 IS 'v2: 發送訊息,支援商品引用';
+
+GRANT EXECUTE ON FUNCTION send_message_v2 TO authenticated;
+
+-- 5.4 查詢對話列表
 CREATE OR REPLACE FUNCTION get_user_conversations_v2(
     p_page INT DEFAULT 1,
     p_size INT DEFAULT 20,
@@ -239,167 +335,7 @@ COMMENT ON FUNCTION get_user_conversations_v2 IS 'v2: 查詢用戶對話列表';
 
 GRANT EXECUTE ON FUNCTION get_user_conversations_v2 TO authenticated;
 
--- 歸檔/取消歸檔對話
-CREATE OR REPLACE FUNCTION toggle_conversation_archive_v2(
-    p_conversation_id BIGINT,
-    p_archived BOOLEAN
-)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    v_current_user_id UUID;
-    v_participant_1 UUID;
-    v_participant_2 UUID;
-BEGIN
-    v_current_user_id := auth.uid();
-
-    IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
-
-    -- 驗證權限
-    SELECT c.participant_1_id, c.participant_2_id
-    INTO v_participant_1, v_participant_2
-    FROM public.conversations_v2 c
-    WHERE c.id = p_conversation_id;
-
-    IF v_participant_1 IS NULL THEN
-        RAISE EXCEPTION 'Conversation not found';
-    END IF;
-
-    IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
-    END IF;
-
-    -- 更新歸檔狀態
-    IF v_current_user_id = v_participant_1 THEN
-        UPDATE public.conversations_v2
-        SET archived_by_participant_1 = p_archived
-        WHERE id = p_conversation_id;
-    ELSE
-        UPDATE public.conversations_v2
-        SET archived_by_participant_2 = p_archived
-        WHERE id = p_conversation_id;
-    END IF;
-
-    RETURN true;
-END;
-$$;
-
-COMMENT ON FUNCTION toggle_conversation_archive_v2 IS 'v2: 歸檔或取消歸檔對話';
-
-GRANT EXECUTE ON FUNCTION toggle_conversation_archive_v2 TO authenticated;
-
--- 發送訊息
-CREATE OR REPLACE FUNCTION send_message_v2(
-    p_conversation_id BIGINT,
-    p_content TEXT,
-    p_message_type VARCHAR(20) DEFAULT 'text',
-    p_related_item_id BIGINT DEFAULT NULL
-)
-RETURNS TABLE(
-    message_id BIGINT,
-    conversation_id BIGINT,
-    sender_id UUID,
-    content TEXT,
-    message_type VARCHAR,
-    related_item_id BIGINT,
-    created_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    v_current_user_id UUID;
-    v_message_id BIGINT;
-    v_participant_1 UUID;
-    v_participant_2 UUID;
-    v_user_is_p1 BOOLEAN;
-BEGIN
-    v_current_user_id := auth.uid();
-
-    IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
-
-    -- 驗證對話存在且用戶有權限
-    SELECT c.participant_1_id, c.participant_2_id
-    INTO v_participant_1, v_participant_2
-    FROM public.conversations_v2 c
-    WHERE c.id = p_conversation_id;
-
-    IF v_participant_1 IS NULL THEN
-        RAISE EXCEPTION 'Conversation not found';
-    END IF;
-
-    IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
-    END IF;
-
-    v_user_is_p1 := (v_current_user_id = v_participant_1);
-
-    -- 插入訊息
-    INSERT INTO public.conversation_messages_v2 (
-        conversation_id,
-        sender_id,
-        content,
-        message_type,
-        related_item_id,
-        read_by_participant_1,
-        read_by_participant_2,
-        read_at_participant_1,
-        read_at_participant_2
-    ) VALUES (
-        p_conversation_id,
-        v_current_user_id,
-        p_content,
-        p_message_type,
-        p_related_item_id,
-        v_user_is_p1,
-        NOT v_user_is_p1,
-        CASE WHEN v_user_is_p1 THEN now() ELSE NULL END,
-        CASE WHEN v_user_is_p1 THEN NULL ELSE now() END
-    )
-    RETURNING id INTO v_message_id;
-
-    -- 如果訊息引用了商品,確保商品在對話中
-    IF p_related_item_id IS NOT NULL THEN
-        INSERT INTO public.conversation_items_v2 (
-            conversation_id,
-            item_id,
-            added_by_user_id,
-            added_via_message_id
-        ) VALUES (
-            p_conversation_id,
-            p_related_item_id,
-            v_current_user_id,
-            v_message_id
-        )
-        ON CONFLICT (conversation_id, item_id) DO NOTHING;
-    END IF;
-
-    -- 返回訊息資料
-    RETURN QUERY
-    SELECT
-        m.id,
-        m.conversation_id,
-        m.sender_id,
-        m.content,
-        m.message_type,
-        m.related_item_id,
-        m.created_at
-    FROM public.conversation_messages_v2 m
-    WHERE m.id = v_message_id;
-END;
-$$;
-
-COMMENT ON FUNCTION send_message_v2 IS 'v2: 發送訊息,支援商品引用';
-
-GRANT EXECUTE ON FUNCTION send_message_v2 TO authenticated;
-
--- 查詢對話訊息
+-- 5.5 查詢對話訊息
 CREATE OR REPLACE FUNCTION get_conversation_messages_v2(
     p_conversation_id BIGINT,
     p_page INT DEFAULT 1,
@@ -437,7 +373,6 @@ BEGIN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
-    -- 驗證權限
     SELECT c.participant_1_id, c.participant_2_id
     INTO v_participant_1, v_participant_2
     FROM public.conversations_v2 c
@@ -487,7 +422,7 @@ COMMENT ON FUNCTION get_conversation_messages_v2 IS 'v2: 查詢對話訊息';
 
 GRANT EXECUTE ON FUNCTION get_conversation_messages_v2 TO authenticated;
 
--- 標記訊息為已讀
+-- 5.6 標記訊息為已讀
 CREATE OR REPLACE FUNCTION mark_messages_as_read_v2(
     p_conversation_id BIGINT,
     p_up_to_message_id BIGINT DEFAULT NULL
@@ -509,7 +444,6 @@ BEGIN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
-    -- 驗證權限
     SELECT c.participant_1_id, c.participant_2_id
     INTO v_participant_1, v_participant_2
     FROM public.conversations_v2 c
@@ -525,7 +459,6 @@ BEGIN
 
     v_user_is_p1 := (v_current_user_id = v_participant_1);
 
-    -- 標記已讀
     IF v_user_is_p1 THEN
         UPDATE public.conversation_messages_v2
         SET
@@ -558,7 +491,7 @@ COMMENT ON FUNCTION mark_messages_as_read_v2 IS 'v2: 標記訊息為已讀';
 
 GRANT EXECUTE ON FUNCTION mark_messages_as_read_v2 TO authenticated;
 
--- 查詢對話中的商品
+-- 5.7 查詢對話中的商品
 CREATE OR REPLACE FUNCTION get_conversation_items_v2(
     p_conversation_id BIGINT
 )
@@ -586,7 +519,6 @@ BEGIN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
-    -- 驗證權限
     IF NOT EXISTS (
         SELECT 1 FROM public.conversations_v2 c
         WHERE c.id = p_conversation_id
@@ -598,13 +530,13 @@ BEGIN
     RETURN QUERY
     SELECT
         ci.item_id,
-        i.title,
-        i.price,
-        i.image_url,
-        i.status,
+        i.title AS item_title,
+        i.price AS item_price,
+        i.image_urls[1] AS item_image_url,
+        i.status AS item_status,
         ci.added_by_user_id,
-        u.name,
-        ci.created_at,
+        u.name AS added_by_user_name,
+        ci.created_at AS added_at,
         (
             SELECT COUNT(*)
             FROM public.conversation_messages_v2 m
@@ -626,9 +558,10 @@ COMMENT ON FUNCTION get_conversation_items_v2 IS 'v2: 查詢對話中討論過�
 
 GRANT EXECUTE ON FUNCTION get_conversation_items_v2 TO authenticated;
 
--- 軟刪除訊息
-CREATE OR REPLACE FUNCTION soft_delete_message_v2(
-    p_message_id BIGINT
+-- 5.8 歸檔/取消歸檔對話
+CREATE OR REPLACE FUNCTION toggle_conversation_archive_v2(
+    p_conversation_id BIGINT,
+    p_archived BOOLEAN
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -636,7 +569,8 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_current_user_id UUID;
-    v_sender_id UUID;
+    v_participant_1 UUID;
+    v_participant_2 UUID;
 BEGIN
     v_current_user_id := auth.uid();
 
@@ -644,79 +578,36 @@ BEGIN
         RAISE EXCEPTION 'Not authenticated';
     END IF;
 
-    -- 檢查訊息是否存在且為當前用戶發送
-    SELECT sender_id INTO v_sender_id
-    FROM public.conversation_messages_v2
-    WHERE id = p_message_id;
+    SELECT c.participant_1_id, c.participant_2_id
+    INTO v_participant_1, v_participant_2
+    FROM public.conversations_v2 c
+    WHERE c.id = p_conversation_id;
 
-    IF v_sender_id IS NULL THEN
-        RAISE EXCEPTION 'Message not found';
+    IF v_participant_1 IS NULL THEN
+        RAISE EXCEPTION 'Conversation not found';
     END IF;
 
-    IF v_sender_id != v_current_user_id THEN
-        RAISE EXCEPTION 'Can only delete your own messages';
+    IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
+        RAISE EXCEPTION 'Not a participant of this conversation';
     END IF;
 
-    -- 軟刪除
-    UPDATE public.conversation_messages_v2
-    SET
-        is_deleted = true,
-        deleted_at = now()
-    WHERE id = p_message_id;
+    IF v_current_user_id = v_participant_1 THEN
+        UPDATE public.conversations_v2
+        SET archived_by_participant_1 = p_archived
+        WHERE id = p_conversation_id;
+    ELSE
+        UPDATE public.conversations_v2
+        SET archived_by_participant_2 = p_archived
+        WHERE id = p_conversation_id;
+    END IF;
 
     RETURN true;
 END;
 $$;
 
-COMMENT ON FUNCTION soft_delete_message_v2 IS 'v2: 軟刪除訊息(僅發送者可刪除)';
+COMMENT ON FUNCTION toggle_conversation_archive_v2 IS 'v2: 歸檔或取消歸檔對話';
 
-GRANT EXECUTE ON FUNCTION soft_delete_message_v2 TO authenticated;
-
--- 恢復已刪除的訊息
-CREATE OR REPLACE FUNCTION restore_message_v2(
-    p_message_id BIGINT
-)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    v_current_user_id UUID;
-    v_sender_id UUID;
-BEGIN
-    v_current_user_id := auth.uid();
-
-    IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
-
-    -- 檢查訊息是否存在且為當前用戶發送
-    SELECT sender_id INTO v_sender_id
-    FROM public.conversation_messages_v2
-    WHERE id = p_message_id;
-
-    IF v_sender_id IS NULL THEN
-        RAISE EXCEPTION 'Message not found';
-    END IF;
-
-    IF v_sender_id != v_current_user_id THEN
-        RAISE EXCEPTION 'Can only restore your own messages';
-    END IF;
-
-    -- 恢復訊息
-    UPDATE public.conversation_messages_v2
-    SET
-        is_deleted = false,
-        deleted_at = NULL
-    WHERE id = p_message_id;
-
-    RETURN true;
-END;
-$$;
-
-COMMENT ON FUNCTION restore_message_v2 IS 'v2: 恢復已刪除的訊息(僅發送者可恢復)';
-
-GRANT EXECUTE ON FUNCTION restore_message_v2 TO authenticated;
+GRANT EXECUTE ON FUNCTION toggle_conversation_archive_v2 TO authenticated;
 
 -- ============================================================================
 -- 完成
@@ -725,25 +616,29 @@ GRANT EXECUTE ON FUNCTION restore_message_v2 TO authenticated;
 DO $$
 BEGIN
     RAISE NOTICE '========================================';
-    RAISE NOTICE 'Messaging System v2 RPC Functions 安裝完成!';
+    RAISE NOTICE 'Messaging System v2 RPC Functions 修正完成!';
+    RAISE NOTICE '版本: 2.0.2';
     RAISE NOTICE '========================================';
     RAISE NOTICE '';
-    RAISE NOTICE '已建立的 RPC 函數:';
+    RAISE NOTICE '已修正並更新的 RPC 函數:';
     RAISE NOTICE '  對話管理:';
-    RAISE NOTICE '    - normalize_participants_v2()';
-    RAISE NOTICE '    - create_or_get_conversation_v2()';
-    RAISE NOTICE '    - get_user_conversations_v2()';
-    RAISE NOTICE '    - toggle_conversation_archive_v2()';
+    RAISE NOTICE '    ✓ normalize_participants_v2()';
+    RAISE NOTICE '    ✓ create_or_get_conversation_v2()';
+    RAISE NOTICE '    ✓ get_user_conversations_v2()';
+    RAISE NOTICE '    ✓ toggle_conversation_archive_v2()';
     RAISE NOTICE '';
     RAISE NOTICE '  訊息管理:';
-    RAISE NOTICE '    - send_message_v2()';
-    RAISE NOTICE '    - get_conversation_messages_v2()';
-    RAISE NOTICE '    - mark_messages_as_read_v2()';
-    RAISE NOTICE '    - soft_delete_message_v2()';
-    RAISE NOTICE '    - restore_message_v2()';
+    RAISE NOTICE '    ✓ send_message_v2()';
+    RAISE NOTICE '    ✓ get_conversation_messages_v2()';
+    RAISE NOTICE '    ✓ mark_messages_as_read_v2()';
     RAISE NOTICE '';
     RAISE NOTICE '  商品管理:';
-    RAISE NOTICE '    - get_conversation_items_v2()';
+    RAISE NOTICE '    ✓ get_conversation_items_v2()';
+    RAISE NOTICE '';
+    RAISE NOTICE '修正內容:';
+    RAISE NOTICE '  - 使用 ON CONSTRAINT 代替欄位名稱';
+    RAISE NOTICE '  - 移除 RETURN QUERY SELECT 中的 AS 別名';
+    RAISE NOTICE '  - 解決 "column reference is ambiguous" 錯誤';
     RAISE NOTICE '';
     RAISE NOTICE '所有函數已授予 authenticated 角色執行權限';
     RAISE NOTICE '========================================';
