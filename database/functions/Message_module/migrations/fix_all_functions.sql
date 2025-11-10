@@ -1,4 +1,4 @@
--- 版本更新註釋：添加分頁參數驗證防止無效輸入，統一錯誤訊息格式提升使用者體驗。
+-- 版本更新註釋：2024-06-14 修正商品狀態型別，listing_status 轉換為語義字串，符合 item_status VARCHAR 定義。
 -- ============================================================================
 -- Messaging System v2 - 完整修正
 -- ============================================================================
@@ -467,7 +467,7 @@ BEGIN
         i.title AS item_title,
         i.price::NUMERIC AS item_price,
         i.image_urls[1] AS item_image_url,
-        i.listing_status AS item_status,
+        CASE WHEN i.listing_status THEN 'available' ELSE 'unavailable' END AS item_status,
         ci.added_by_user_id,
         u.nickname AS added_by_user_name,
         ci.created_at AS added_at,
