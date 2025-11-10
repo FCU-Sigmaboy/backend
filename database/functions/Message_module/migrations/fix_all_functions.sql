@@ -1,3 +1,4 @@
+-- 版本更新註釋：添加分頁參數驗證防止無效輸入，統一錯誤訊息格式提升使用者體驗。
 -- ============================================================================
 -- Messaging System v2 - 完整修正
 -- ============================================================================
@@ -6,8 +7,6 @@
 -- 2. users.avatar_url -> users.profile_picture_url
 -- 3. 使用 v_conv_id 避免變數名稱衝突
 -- 4. 使用命名約束
--- 5. 版本更新註釋：修正了查詢商品時引用不存在的 status 欄位，改為 listing_status。
-
 -- ============================================================================
 
 -- Step 1: 確保約束有名稱
@@ -77,11 +76,11 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
     END IF;
 
     IF v_current_user_id = p_other_user_id THEN
-        RAISE EXCEPTION 'Cannot create conversation with yourself';
+        RAISE EXCEPTION 'Invalid request: cannot create conversation with yourself';
     END IF;
 
     SELECT p1, p2 INTO v_participant_1, v_participant_2
@@ -153,7 +152,7 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
     END IF;
 
     SELECT c.participant_1_id, c.participant_2_id
@@ -166,7 +165,7 @@ BEGIN
     END IF;
 
     IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
+        RAISE EXCEPTION 'Access denied: not a participant';
     END IF;
 
     v_user_is_p1 := (v_current_user_id = v_participant_1);
@@ -230,7 +229,16 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
+    END IF;
+
+    -- 驗證分頁參數
+    IF p_page < 1 THEN
+        RAISE EXCEPTION 'Invalid page number: must be >= 1';
+    END IF;
+
+    IF p_size < 1 OR p_size > 100 THEN
+        RAISE EXCEPTION 'Invalid page size: must be between 1 and 100';
     END IF;
 
     v_offset := (p_page - 1) * p_size;
@@ -300,7 +308,16 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
+    END IF;
+
+    -- 驗證分頁參數
+    IF p_page < 1 THEN
+        RAISE EXCEPTION 'Invalid page number: must be >= 1';
+    END IF;
+
+    IF p_size < 1 OR p_size > 100 THEN
+        RAISE EXCEPTION 'Invalid page size: must be between 1 and 100';
     END IF;
 
     SELECT c.participant_1_id, c.participant_2_id
@@ -313,7 +330,7 @@ BEGIN
     END IF;
 
     IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
+        RAISE EXCEPTION 'Access denied: not a participant';
     END IF;
 
     v_user_is_p1 := (v_current_user_id = v_participant_1);
@@ -365,7 +382,7 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
     END IF;
 
     SELECT c.participant_1_id, c.participant_2_id
@@ -378,7 +395,7 @@ BEGIN
     END IF;
 
     IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
+        RAISE EXCEPTION 'Access denied: not a participant';
     END IF;
 
     v_user_is_p1 := (v_current_user_id = v_participant_1);
@@ -433,7 +450,7 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
     END IF;
 
     IF NOT EXISTS (
@@ -441,14 +458,14 @@ BEGIN
         WHERE c.id = p_conversation_id
           AND (c.participant_1_id = v_current_user_id OR c.participant_2_id = v_current_user_id)
     ) THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
+        RAISE EXCEPTION 'Access denied: not a participant';
     END IF;
 
     RETURN QUERY
     SELECT
         ci.item_id,
         i.title AS item_title,
-        i.price AS item_price,
+        i.price::NUMERIC AS item_price,
         i.image_urls[1] AS item_image_url,
         i.listing_status AS item_status,
         ci.added_by_user_id,
@@ -484,7 +501,7 @@ BEGIN
     v_current_user_id := auth.uid();
 
     IF v_current_user_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Authentication required';
     END IF;
 
     SELECT c.participant_1_id, c.participant_2_id
@@ -497,7 +514,7 @@ BEGIN
     END IF;
 
     IF v_current_user_id != v_participant_1 AND v_current_user_id != v_participant_2 THEN
-        RAISE EXCEPTION 'Not a participant of this conversation';
+        RAISE EXCEPTION 'Access denied: not a participant';
     END IF;
 
     IF v_current_user_id = v_participant_1 THEN
