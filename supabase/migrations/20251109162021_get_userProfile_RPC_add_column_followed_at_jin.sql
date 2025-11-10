@@ -12,6 +12,8 @@ REPLACE FUNCTION public.get_public_user_profile(p_user_id UUID -- 要查詢的�
 )
     RETURNS JSON
     AS $$
+    DECLARE
+    v_current_uid UUID := auth.uid(); -- *** 獲取 "當前登入者" ID ***
 BEGIN
     -- 使用 json_build_object 來建構您需要的 DTO
     RETURN
