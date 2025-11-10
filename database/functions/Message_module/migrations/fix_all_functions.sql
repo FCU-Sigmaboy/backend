@@ -1,4 +1,6 @@
--- 版本更新註釋：2024-06-14 修正 CASE 語句型別轉換，TEXT 顯式轉為 VARCHAR 以符合函數定義。
+-- 版本更新註釋：
+-- 2024-06-14: 修正 CASE 語句型別轉換，TEXT 顯式轉為 VARCHAR 以符合函數定義
+-- 2024-12-XX: 新增資料庫索引以優化查詢性能，包含外鍵索引、複合索引及部分索引
 -- ============================================================================
 -- Messaging System v2 - 完整修正
 -- ============================================================================
@@ -24,6 +26,63 @@ BEGIN
         RAISE NOTICE '✓ 已建立唯一約束: uq_conv_items_v2';
     END IF;
 END $$;
+
+-- ============================================================================
+-- Step 2: 建立效能優化索引
+-- ============================================================================
+-- 根據 Supabase 最佳實踐建立索引：
+-- 1. 外鍵欄位應建立索引 (Lint 0001)
+-- 2. RLS 相關欄位必須索引以提升效能
+-- 3. 使用部分索引過濾常用條件
+-- 4. 複合索引用於多欄位查詢和排序
+
+-- conversations_v2 索引
+CREATE INDEX IF NOT EXISTS idx_conversations_v2_participant_1
+    ON public.conversations_v2 (participant_1_id)
+    WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_conversations_v2_participant_2
+    ON public.conversations_v2 (participant_2_id)
+    WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_conversations_v2_participants
+    ON public.conversations_v2 (participant_1_id, participant_2_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_v2_last_message
+    ON public.conversations_v2 (last_message_at DESC NULLS LAST)
+    WHERE is_active = true;
+
+-- conversation_messages_v2 索引
+CREATE INDEX IF NOT EXISTS idx_conv_messages_v2_conversation_created
+    ON public.conversation_messages_v2 (conversation_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_conv_messages_v2_sender
+    ON public.conversation_messages_v2 (sender_id)
+    WHERE is_deleted = false;
+
+CREATE INDEX IF NOT EXISTS idx_conv_messages_v2_unread_p1
+    ON public.conversation_messages_v2 (conversation_id, sender_id, read_by_participant_1)
+    WHERE is_deleted = false AND read_by_participant_1 = false;
+
+CREATE INDEX IF NOT EXISTS idx_conv_messages_v2_unread_p2
+    ON public.conversation_messages_v2 (conversation_id, sender_id, read_by_participant_2)
+    WHERE is_deleted = false AND read_by_participant_2 = false;
+
+CREATE INDEX IF NOT EXISTS idx_conv_messages_v2_related_item
+    ON public.conversation_messages_v2 (related_item_id)
+    WHERE related_item_id IS NOT NULL AND is_deleted = false;
+
+-- conversation_items_v2 索引
+CREATE INDEX IF NOT EXISTS idx_conv_items_v2_conversation
+    ON public.conversation_items_v2 (conversation_id, created_at)
+    WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_conv_items_v2_item
+    ON public.conversation_items_v2 (item_id)
+    WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_conv_items_v2_added_by
+    ON public.conversation_items_v2 (added_by_user_id);
 
 -- ============================================================================
 -- 函數 1: normalize_participants_v2
