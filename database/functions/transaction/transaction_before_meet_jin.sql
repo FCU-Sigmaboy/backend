@@ -170,44 +170,73 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================
 -- API 4: (買家) 確認交易並更新 Receiver 備註
+-- *** 已更新：此步驟將 "扣除" 買家點數 (點數託管) ***
 -- =============================================
 CREATE OR REPLACE FUNCTION public.buyer_confirm_transaction(
     p_transaction_id BIGINT,
-    p_note TEXT
+    p_receiver_note TEXT
 )
               RETURNS JSON
               AS $$
               DECLARE
-              v_receiver_id UUID := auth.uid();
+              v_receiver_id UUID := auth.uid(); -- 買家 (我)
 v_transaction transactions;
+v_item items;
+v_receiver_profile profiles;
 BEGIN
+    -- 1. 驗證
     IF v_receiver_id IS NULL THEN RAISE EXCEPTION '使用者未登入'; END IF;
 
+  -- 2. 鎖定交易
+SELECT * INTO v_transaction FROM public.transactions WHERE id = p_transaction_id FOR UPDATE;
+
+-- 3. 檢查交易
+IF v_transaction IS NULL THEN RAISE EXCEPTION '交易不存在'; END IF;
+IF v_transaction.receiver_id != v_receiver_id THEN RAISE EXCEPTION '您不是此交易的買家'; END IF;
+IF v_transaction.transaction_status != 'confirming' THEN RAISE EXCEPTION '此交易並非等待您確認狀態'; END IF;
+
+  -- 4. 獲取物品價格
+SELECT * INTO v_item FROM public.items WHERE id = v_transaction.item_id;
+IF v_item IS NULL THEN RAISE EXCEPTION '關聯物品不存在'; END IF;
+
+  -- 5. *** 新增：檢查買家點數 ***
+SELECT * INTO v_receiver_profile FROM public.profiles WHERE user_id = v_receiver_id;
+IF v_receiver_profile.balance < v_item.price THEN
+     RAISE EXCEPTION '點數餘額不足，無法確認交易';
+END IF;
+
+  -- 6. *** 新增：扣除買家點數 (託管) ***
+UPDATE public.profiles
+SET balance = balance - v_item.price,
+    updated_at = NOW()
+WHERE user_id = v_receiver_id;
+
+-- 7. *** 新增：(日誌) 新增買家點數支出紀錄 ***
+INSERT INTO public.point_logs (user_id, amount, "type", transaction_id, description)
+VALUES (v_receiver_id, -v_item.price, 'transaction_expense', p_transaction_id, '支付 (託管) 物品：' || v_item.title);
+
+-- 8. 更新交易狀態為 'pending' (等待面交)
 UPDATE public.transactions
 SET
-    receiver_note = p_note,
-    transaction_status = 'pending', -- *** 關鍵：狀態推進到 "pending" ***
+    receiver_note = p_receiver_note,
+    transaction_status = 'pending', -- *** 狀態推進 ***
     updated_at = NOW()
 WHERE id = p_transaction_id
-  AND receiver_id = v_receiver_id -- 安全檢查
-  AND transaction_status = 'confirming' -- 只能在確認中推進
     RETURNING * INTO v_transaction;
-
-IF v_transaction IS NULL THEN
-    RAISE EXCEPTION '找不到交易，或您無權限，或交易已不在確認狀態';
-END IF;
 
 RETURN json_build_object(
       'success', true,
+      'transaction_id', v_transaction.id,
       'new_status', v_transaction.transaction_status,
-      'receiver_note', v_transaction.receiver_note
+      'new_balance', v_receiver_profile.balance - v_item.price
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- =============================================
--- API 5: (共用) 取消交易
+-- API 5: (任一方) 取消交易
+-- *** 已更新：如果狀態為 'pending'，必須 "退款" ***
 -- =============================================
 CREATE OR REPLACE FUNCTION public.cancel_transaction(
     p_transaction_id BIGINT
@@ -219,32 +248,55 @@ CREATE OR REPLACE FUNCTION public.cancel_transaction(
 v_transaction transactions;
 v_item items;
 BEGIN
+    -- 1. 驗證
     IF v_current_uid IS NULL THEN RAISE EXCEPTION '使用者未登入'; END IF;
 
-  -- 1. 鎖定交易
-SELECT * INTO v_transaction
-FROM public.transactions
-WHERE id = p_transaction_id FOR UPDATE;
+  -- 2. 鎖定交易
+SELECT * INTO v_transaction FROM public.transactions WHERE id = p_transaction_id FOR UPDATE;
 
--- 2. 驗證
+-- 3. 檢查權限和狀態
 IF v_transaction IS NULL THEN RAISE EXCEPTION '交易不存在'; END IF;
 IF v_transaction.giver_id != v_current_uid AND v_transaction.receiver_id != v_current_uid THEN
     RAISE EXCEPTION '您不是此交易的參與者';
 END IF;
-IF v_transaction.transaction_status NOT IN ('confirming', 'pending') THEN
-    RAISE EXCEPTION '此交易狀態無法被取消';
+IF v_transaction.transaction_status = 'completed' THEN RAISE EXCEPTION '無法取消已完成的交易'; END IF;
+IF v_transaction.transaction_status = 'cancelled' THEN RAISE EXCEPTION '交易已被取消'; END IF;
+
+  -- 4. *** 新增：退款邏輯 ***
+  --    如果狀態是 'pending'，表示買家已付款，必須退款
+IF v_transaction.transaction_status = 'pending' THEN
+
+    -- 4a. 獲取物品價格
+SELECT * INTO v_item FROM public.items WHERE id = v_transaction.item_id;
+
+-- 4b. 將點數退還給買家
+UPDATE public.profiles
+SET balance = balance + v_item.price,
+    updated_at = NOW()
+WHERE user_id = v_transaction.receiver_id;
+
+-- 4c. (日誌) 新增買家點數退款紀錄
+INSERT INTO public.point_logs (user_id, amount, "type", transaction_id, description)
+VALUES (v_transaction.receiver_id, v_item.price, 'admin_adjustment', p_transaction_id, '交易取消退款：' || v_item.title);
 END IF;
 
-  -- 3. (交易 1) 更新交易狀態為 "cancelled"
+  -- 5. 更新交易狀態為 'cancelled'
 UPDATE public.transactions
-SET transaction_status = 'cancelled', updated_at = NOW()
-WHERE id = p_transaction_id;
+SET
+    transaction_status = 'cancelled',
+    updated_at = NOW()
+WHERE id = p_transaction_id
+    RETURNING * INTO v_transaction;
 
--- 4. (交易 2) 將物品重新上架
+-- 6. 重新上架物品
 UPDATE public.items
 SET listing_status = TRUE, updated_at = NOW()
 WHERE id = v_transaction.item_id;
 
-RETURN json_build_object('success', true, 'new_status', 'cancelled');
+RETURN json_build_object(
+      'success', true,
+      'transaction_id', v_transaction.id,
+      'new_status', v_transaction.transaction_status
+  );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
