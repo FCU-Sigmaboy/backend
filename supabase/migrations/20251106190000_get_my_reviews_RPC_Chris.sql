@@ -41,8 +41,8 @@ BEGIN
     SELECT
         r.id AS review_id,
         r.reviewer_id,
-        p.nickname AS reviewer_nickname,
-        p.profile_picture_url AS reviewer_avatar,
+        u.nickname AS reviewer_nickname,
+        u.profile_picture_url AS reviewer_avatar,
         r.score,
         r.comment,
         r.created_at,
@@ -57,7 +57,7 @@ BEGIN
     FROM
         public.ratings r
     INNER JOIN
-        public.profiles p ON r.reviewer_id = p.id
+        public.users u ON r.reviewer_id = u.id
     INNER JOIN
         public.transactions t ON r.transaction_id = t.id
     INNER JOIN
