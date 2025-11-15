@@ -102,10 +102,11 @@ BEGIN
 
     -- 9. 更新被評價者的平均評分
     UPDATE public.users
-    SET avg_rating = (
-        SELECT ROUND(AVG(score)::numeric, 2)
-        FROM public.ratings
-        WHERE reviewed_user_id = v_reviewed_user_id
+    SET avg_rating = COALESCE(
+        (SELECT ROUND(AVG(score)::numeric, 2)
+         FROM public.ratings
+         WHERE reviewed_user_id = v_reviewed_user_id),
+        0.00  -- 沒有評價時設為 0.00
     ),
     updated_at = now()
     WHERE id = v_reviewed_user_id;
