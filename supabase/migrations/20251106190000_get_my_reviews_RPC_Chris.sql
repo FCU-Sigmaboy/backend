@@ -41,17 +41,17 @@ BEGIN
     SELECT
         r.id AS review_id,
         r.reviewer_id,
-        u.nickname AS reviewer_nickname,
-        u.profile_picture_url AS reviewer_avatar,
+        u.nickname::TEXT AS reviewer_nickname,
+        u.profile_picture_url::TEXT AS reviewer_avatar,
         r.score,
         r.comment,
         r.created_at,
         r.transaction_id,
         t.item_id,
-        i.title AS item_title,
+        i.title::TEXT AS item_title,
         -- 取得物品的第一張圖片
         CASE
-            WHEN array_length(i.image_urls, 1) > 0 THEN i.image_urls[1]
+            WHEN array_length(i.image_urls, 1) > 0 THEN i.image_urls[1]::TEXT
             ELSE NULL
         END AS item_image
     FROM
