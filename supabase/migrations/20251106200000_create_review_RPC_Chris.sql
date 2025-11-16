@@ -73,9 +73,9 @@ BEGIN
     -- 7. 檢查是否已經評價過
     SELECT COUNT(*)
     INTO v_existing_review_count
-    FROM public.ratings
-    WHERE transaction_id = p_transaction_id
-      AND reviewer_id = v_current_user_id;
+    FROM public.ratings r
+    WHERE r.transaction_id = p_transaction_id
+      AND r.reviewer_id = v_current_user_id;
 
     IF v_existing_review_count > 0 THEN
         RAISE EXCEPTION '您已經對此交易建立過評價，無法重複評價';
