@@ -27,15 +27,47 @@
 - [使用範例](./examples/messaging_usage.js) - JavaScript 客戶端範例程式碼
 - [測試腳本](./supabase/tests/test_messaging_feature.sql) - SQL 測試腳本
 
+### 交易功能
+
+本專案實現了完整的二手交易流程，包括見面前確認和見面後完成交易。
+
+**主要功能：**
+- 賣家發起交易要約（生成確認碼）
+- 買賣雙方確認交易意願
+- 見面時買家輸入確認碼完成交易
+- 即時交易狀態更新
+- 完整的交易歷史記錄
+
+**交易流程：**
+1. **確認階段** - 賣家發起交易，雙方確認意願
+2. **進行中階段** - 交易進入進行中狀態，等待見面
+3. **完成階段** - 買家輸入確認碼，交易完成並結算點數
+
+**技術細節：**
+- 使用 PostgreSQL RPC 函數實現交易邏輯
+- 啟用 Supabase Realtime 進行交易狀態即時推送
+- 完整的交易狀態檢查和驗證
+- 自動化物品狀態管理（下架/上架）
+- 安全的點數結算機制
+
+**文件：**
+- [交易流程說明](./contracts/transaction/流程說明.md) - 完整的交易流程說明
+- [交易 API](./contracts/transaction/) - 前後端交易介面
+
 ## 專案結構
 
 ```
 backend/
 ├── supabase/
 │   ├── migrations/          # 資料庫遷移檔案
-│   │   └── 20251029091800_setup_messaging_feature.sql
+│   │   ├── 20251029091800_setup_messaging_feature.sql
+│   │   └── 20251116152605_transaction_before_meet_05_jin.sql
 │   ├── seeds/              # 測試資料
 │   └── tests/              # 測試腳本
+├── contracts/
+│   ├── conversationAPI/    # 訊息功能 API
+│   ├── transaction/        # 交易功能 API
+│   └── ...                 # 其他功能 API
 ├── examples/               # 使用範例
 ├── MESSAGING_API.md        # 訊息功能 API 文件
 └── README.md              # 專案說明

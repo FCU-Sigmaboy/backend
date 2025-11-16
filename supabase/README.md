@@ -7,13 +7,12 @@
 ```
 migrations/
 ├── README.md                                          # 本檔案
-<!-- DEPRECATED_FUNCTIONS_EVALUATION.md 檔案尚未建立，請參考 CLEANUP_GUIDE.md 以取得相關資訊 -->
-├── CLEANUP_GUIDE.md                                   # 清理操作指南
+├── CLEANUP_GUIDE.md                                   # 清理操作指南 (位於 contracts/conversationAPI/)
 ├── 20251025092807_create_initial_schema.sql          # 初始資料庫結構
 ├── 20251025093808_insert_initial_data.sql            # 初始資料
 ├── 20251025101010_setup_row_level_security.sql       # RLS 設定
 ├── ...
-└── 20251108133713_cleanup_deprecated_functions_jo.sql # 清理棄用函數
+└── 20251116152605_transaction_before_meet_05_jin.sql # 交易流程最終版
 ```
 
 ## 🚀 快速開始
@@ -54,9 +53,8 @@ supabase migration new add_user_preferences
 
 | 檔案 | 說明 | 重要性 |
 |------|------|--------|
-| `DEPRECATED_FUNCTIONS_EVALUATION.md` | 棄用函數評估報告 | ⭐⭐⭐ |
-| `CLEANUP_GUIDE.md` | 清理棄用函數操作指南 | ⭐⭐⭐ |
-| `20251109000000_cleanup_deprecated_functions_jo.sql` | 清理棄用函數 migration | ⭐⭐⭐ |
+| `CLEANUP_GUIDE.md` | 清理棄用函數操作指南 (位於 contracts/conversationAPI/) | ⭐⭐⭐ |
+| `20251108133713_cleanup_deprecated_functions_jo.sql` | 清理棄用函數 migration | ⭐⭐⭐ |
 
 ### Migration 時間軸
 
@@ -107,26 +105,43 @@ supabase migration new add_user_preferences
 - ✅ `20251108120000_fix_ambiguous_column_create_or_get_conversation_jo.sql` - 修復欄位歧義
 - ✅ `20251108130000_fix_all_ambiguous_columns_messaging_jo.sql` - 修復所有欄位歧義
 
-#### 清理與優化 (2025-11-09)
-- ⭐ `20251109000000_cleanup_deprecated_functions_jo.sql` - 清理棄用函數
+#### 清理與優化 (2025-11-08 ~ 2025-11-09)
+- ✅ `20251108133713_cleanup_deprecated_functions_jo.sql` - 清理棄用函數
 
-## 🔧 Conversations & Messages 功能
+#### 位置功能優化 (2025-11-09)
+- ✅ `20251109000001_add_use_primary_location_to_items_jo.sql` - 新增物品使用主要位置欄位
+- ✅ `20251109000002_update_create_item_with_use_primary_location_jo.sql` - 更新建立物品使用主要位置
+- ✅ `20251109000003_update_search_and_details_rpc_with_use_primary_location_jo.sql` - 更新搜尋和詳情 RPC 使用主要位置
 
-### 目前可用的 RPC 函數
+#### 使用者功能增強 (2025-11-09 ~ 2025-11-10)
+- ✅ `20251109162021_get_userProfile_RPC_add_column_followed_at_jin.sql` - 使用者資料加入追蹤時間
+- ✅ `20251110072258_get_userProfile_RPC_add_column_followed_at_02_jin.sql` - 使用者資料加入追蹤時間 v2
 
-| 函數名稱 | 功能 | 狀態 |
-|---------|------|------|
-| `get_user_conversations()` | 取得使用者對話列表 | ✅ 最新版 |
-| `get_conversation_messages()` | 取得對話訊息 | ✅ 最新版 |
-| `send_message()` | 發送訊息 | ✅ 最新版 |
-| `mark_messages_as_read()` | 標記已讀 | ✅ 已優化 |
-| `create_or_get_conversation()` | 建立/取得對話 | ✅ 最新版 |
-| `get_unread_message_count()` | 取得未讀數量 | ✅ 已優化 |
-| `delete_conversation()` | 軟刪除對話 | ✅ 新功能 |
-| `restore_conversation()` | 恢復對話 | ✅ 新功能 |
-| `delete_message()` | 軟刪除訊息 | ✅ 新功能 |
-| `cleanup_deleted_conversations()` | 清理已刪除對話 | ✅ 維護用 |
-| `get_conversations_by_ids()` | 批次取得對話 | ✅ 新功能 |
+#### 儲存空間設定 (2025-11-10)
+- ✅ `20251110000001_setup_storage_buckets_with_cache_jo.sql` - 設定儲存桶與快取
+
+#### 搜尋功能擴展 (2025-11-11 ~ 2025-11-14)
+- ✅ `20251111133657_get_searchItems_RPC_everyone_jin.sql` - 所有人搜尋物品
+- ✅ `20251114072155_get_searchItems_RPC_everyone_approximate_location_jin.sql` - 所有人搜尋近似位置
+- ✅ `20251114074824_get_searchItems_RPC_everyone_approximate_location_02_jin.sql` - 所有人搜尋近似位置 v2
+
+#### 交易功能 (2025-11-14 ~ 2025-11-16)
+- ✅ `20251114051707_add_column_to_transctions_jin.sql` - 新增交易欄位
+- ✅ `20251114062232_transaction_before_meet_jin.sql` - 見面前交易功能
+- ✅ `20251114064203_transaction_meet_jin.sql` - 見面交易功能
+- ✅ `20251114081553_alter_transaction_status_check_jin.sql` - 修改交易狀態檢查
+- ✅ `20251114085017_transaction_before_meet_02_jin.sql` - 見面前交易功能 v2
+- ✅ `20251114090551_transaction_before_meet_03_jin.sql` - 見面前交易功能 v3
+- ✅ `20251114101138_transaction__meet_02_jin.sql` - 見面交易功能 v2
+- ✅ `20251114125127_transaction__meet_03_jin.sql` - 見面交易功能 v3
+- ✅ `20251114143758_transaction_before_meet_04_jin.sql` - 見面前交易功能 v4
+- ✅ `20251115081911_transactions_realTime_jin.sql` - 交易即時功能
+- ✅ `20251116152605_transaction_before_meet_05_jin.sql` - 見面前交易功能最終版
+
+#### 物品狀態管理 (2025-11-14)
+- ✅ `20251114133511_update_toggleItemStatus_jin.sql` - 更新切換物品狀態
+- ✅ `20251114135514_everyone_get_200000_jin.sql` - 所有人取得 200000 限制
+- ✅ `20251114150137_check_users_match_profiles_and_get_200000_jin.sql` - 檢查使用者匹配並取得 200000
 
 ### 已棄用的函數 ❌
 
@@ -135,109 +150,12 @@ supabase migration new add_user_preferences
 | `get_user_conversations(INT, INT)` | `get_user_conversations(INT, INT, TEXT, BOOLEAN)` | 🗑️ 已刪除 |
 | `get_conversation_messages(BIGINT, INT, INT)` | `get_conversation_messages(BIGINT, INT, INT, BOOLEAN)` | 🗑️ 已刪除 |
 
-**詳細資訊請參考:** `DEPRECATED_FUNCTIONS_EVALUATION.md`
+**詳細資訊請參考:** `CLEANUP_GUIDE.md` (位於 contracts/conversationAPI/)
 
-## ⚠️ 重要注意事項
-
-### 執行清理 Migration 前
-
-1. **備份資料庫** 💾
-   ```bash
-   supabase db dump -f backup_$(date +%Y%m%d).sql
-   ```
-
-2. **更新前端程式碼** 🔄
-   確保不再使用舊版本函數簽名
-
-3. **先在測試環境測試** 🧪
-   驗證無誤後再部署到生產環境
-
-**詳細步驟請參考:** `CLEANUP_GUIDE.md`
-
-### 軟刪除資料維護
-
-建議定期執行清理，避免軟刪除資料無限增長：
-
-```sql
--- 清理 30 天前雙方都刪除的對話
-SELECT public.cleanup_deleted_conversations(30);
-```
-
-可以使用 Supabase Edge Function 配合 Cron Job 自動執行。
-
-## 📊 驗證工具
-
-### 檢查函數清單
-
-```sql
--- 查看所有對話相關函數
-SELECT * FROM public.conversation_functions_inventory
-ORDER BY function_name;
-```
-
-### 檢查資料完整性
-
-```sql
--- 執行完整性檢查
-SELECT * FROM public.check_conversation_data_integrity();
-```
-
-### 監控軟刪除資料量
-
-```sql
--- 查看軟刪除統計
-SELECT
-    '對話' as type,
-    COUNT(*) as total,
-    COUNT(*) FILTER (WHERE deleted_by_buyer_at IS NOT NULL OR deleted_by_seller_at IS NOT NULL) as deleted
-FROM public.conversations
-UNION ALL
-SELECT
-    '訊息' as type,
-    COUNT(*) as total,
-    COUNT(*) FILTER (WHERE deleted_at IS NOT NULL) as deleted
-FROM public.conversation_messages;
-```
-
-## 🐛 故障排除
-
-### Migration 執行失敗
-
-```bash
-# 查看詳細錯誤
-supabase db push --debug
-
-# 重置資料庫（警告：會刪除所有資料）
-supabase db reset
-```
-
-### 檢查遠端與本地差異
-
-```bash
-# 比較本地與遠端
-supabase db diff
-
-# 產生 migration 來同步差異
-supabase db diff --schema public | supabase migration new sync_schema
-```
-
-### 回滾 Migration
-
-```sql
--- 手動回滾（需要自己寫回滾邏輯）
--- Supabase 不支援自動回滾，建議從備份恢復
-psql $DATABASE_URL < backup_file.sql
-```
-
-## 📖 相關資源
-
-### 官方文件
-- [Supabase Migrations 文件](https://supabase.com/docs/guides/cli/local-development#database-migrations)
-- [PostgreSQL 官方文件](https://www.postgresql.org/docs/)
+---
 
 ### 專案文件
-- **棄用函數評估報告:** `DEPRECATED_FUNCTIONS_EVALUATION.md`
-- **清理操作指南:** `CLEANUP_GUIDE.md`
+- **清理操作指南:** `CLEANUP_GUIDE.md` (位於 contracts/conversationAPI/)
 
 ### 團隊聯絡
 - **Backend Team** - 資料庫相關問題
@@ -263,5 +181,5 @@ psql $DATABASE_URL < backup_file.sql
 ---
 
 **維護者:** Backend Team  
-**最後更新:** 2025-11-09  
-**版本:** 1.0
+**最後更新:** 2025-11-17  
+**版本:** 1.1

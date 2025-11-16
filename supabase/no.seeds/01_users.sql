@@ -1,18 +1,18 @@
 -- =============================================
+-- 版本更新註釋
+-- 2025-11-15: 更新測試種子資料以符合當前資料庫設計
+-- =============================================
+
+-- =============================================
 -- 模組一：使用者管理 - Users 表
 -- =============================================
 
 INSERT INTO public.users (id, nickname, profile_picture_url, avg_rating, created_at, updated_at)
-VALUES ('488a4712-dd63-4938-9679-336f434ad263', 'Tao', 'https://example.com/tao_profile.jpg', 4.5,
-        now(), now()),
-       ('cdf0fa87-4c7f-4a89-8ae6-7d2b8caaa788', 'Yo', 'https://example.com/yo_profile.jpg', 4.8,
-        now(), now()),
-       ('7140056b-c71c-489f-8f57-2eeb1694713e', 'Lee', 'https://example.com/lee_profile.jpg',
-        4.2, now(), now()),
-       ('9b900884-10cf-416c-bb5d-e577c4fbacba', 'Lin', 'https://example.com/lin_profile.jpg',
-        4.7, now(), now()),
-       ('c8d6998b-79e3-4d56-a9ef-689eed9bd823', 'Liao', 'https://example.com/liao_profile.jpg',
-        4.0, now(), now()),
-       ('e773c5f7-172c-4976-a7be-d537a7e6e71e', 'Chen',
-        'https://example.com/chen_profile.jpg', 4.6, now(), now())
+VALUES
+    ('488a4712-dd63-4938-9679-336f434ad263', 'Tao', 'https://i.ibb.co/G4zySzvz/tao.png', 4.5, '2023-10-27 10:00:00+00', '2023-10-27 10:00:00+00'),
+    ('cdf0fa87-4c7f-4a89-8ae6-7d2b8caaa788', 'Yo', 'https://i.ibb.co/Pzhx35Jd/yo.png', 4.8, '2023-10-27 10:01:00+00', '2023-10-27 10:01:00+00'),
+    ('7140056b-c71c-489f-8f57-2eeb1694713e', 'Lee', 'https://i.ibb.co/B2ntn883/lee.png', 4.2, '2023-10-27 10:02:00+00', '2023-10-27 10:02:00+00'),
+    ('9b900884-10cf-416c-bb5d-e577c4fbacba', 'Lin', 'https://i.ibb.co/vxmvBYvR/lin.png', 4.7, '2023-10-27 10:03:00+00', '2023-10-27 10:03:00+00'),
+    ('c8d6998b-79e3-4d56-a9ef-689eed9bd823', 'Liao', 'https://i.ibb.co/mFdVwtxS/liao.png', 4.0, '2023-10-27 10:04:00+00', '2023-10-27 10:04:00+00'),
+    ('e773c5f7-172c-4976-a7be-d537a7e6e71e', 'Chen', 'https://i.ibb.co/DHxn0Ncb/chen.png', 4.6, '2023-10-27 10:05:00+00', '2023-10-27 10:05:00+00')
 ON CONFLICT (id) DO NOTHING;
