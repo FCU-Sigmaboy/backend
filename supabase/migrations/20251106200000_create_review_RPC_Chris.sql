@@ -73,9 +73,9 @@ BEGIN
     -- 7. 檢查是否已經評價過
     SELECT COUNT(*)
     INTO v_existing_review_count
-    FROM public.ratings
-    WHERE transaction_id = p_transaction_id
-      AND reviewer_id = v_current_user_id;
+    FROM public.ratings r
+    WHERE r.transaction_id = p_transaction_id
+      AND r.reviewer_id = v_current_user_id;
 
     IF v_existing_review_count > 0 THEN
         RAISE EXCEPTION '您已經對此交易建立過評價，無法重複評價';
@@ -103,9 +103,9 @@ BEGIN
     -- 9. 更新被評價者的平均評分
     UPDATE public.users
     SET avg_rating = COALESCE(
-        (SELECT ROUND(AVG(score)::numeric, 2)
-         FROM public.ratings
-         WHERE reviewed_user_id = v_reviewed_user_id),
+        (SELECT ROUND(AVG(r.score)::numeric, 2)
+         FROM public.ratings r
+         WHERE r.reviewed_user_id = v_reviewed_user_id),
         0.00  -- 沒有評價時設為 0.00
     ),
     updated_at = now()
