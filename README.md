@@ -1,4 +1,4 @@
-# Backend - 二手交易平台
+# Backend
 
 這是一個基於 Supabase 的二手交易平台後端專案。
 
