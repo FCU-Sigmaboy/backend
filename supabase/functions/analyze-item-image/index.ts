@@ -164,21 +164,31 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. 呼叫 Google Gemini Vision API
+    // 6. 呼叫 Google Gemini Vision API（含重試機制）
     // 使用 gemini-2.5-flash (穩定版本)
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
+    const MAX_RETRIES = 3
+    const RETRY_DELAYS = [2000, 5000, 10000] // 重試延遲：2秒、5秒、10秒
+
+    let geminiResponse
+    let lastError
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        console.log(`嘗試呼叫 Gemini API (第 ${attempt + 1}/${MAX_RETRIES} 次)`)
+
+        geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [
                 {
-                  text: `你是一位在二手交易平台上賣東西的一般使用者。請根據圖片分析物品，用輕鬆、自然的口吻描述，就像你真的要把這個東西賣給別人一樣。請以繁體中文回答。
+                  parts: [
+                    {
+                      text: `你是一位在二手交易平台上賣東西的一般使用者。請根據圖片分析物品，用輕鬆、自然的口吻描述，就像你真的要把這個東西賣給別人一樣。請以繁體中文回答。
 
 【可用的物品分類】
 ${categoryList}
@@ -238,35 +248,96 @@ ${categoryList}
 }
 
 請用這種輕鬆、自然的口吻來分析並描述這個物品。記得要像真實使用者在賣二手物品時會寫的內容！`
-                },
-                {
-                  inline_data: {
-                    mime_type: imageMimeType,
-                    data: imageBase64
-                  }
+                    },
+                    {
+                      inline_data: {
+                        mime_type: imageMimeType,
+                        data: imageBase64
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 4096  // 增加到 4096，避免回應被截斷
+              ],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 4096  // 增加到 4096，避免回應被截斷
+              }
+            })
           }
-        })
-      }
-    )
+        )
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      console.error('Gemini API 錯誤:', errorText)
+        // 檢查回應狀態
+        if (geminiResponse.ok) {
+          console.log('Gemini API 呼叫成功')
+          break // 成功就跳出重試迴圈
+        }
+
+        // 如果是 503 或 429 錯誤，進行重試
+        const errorText = await geminiResponse.text()
+        const errorData = JSON.parse(errorText)
+        const errorCode = errorData?.error?.code
+
+        if (errorCode === 503 || errorCode === 429) {
+          lastError = errorText
+          console.warn(`Gemini API 暫時無法使用 (錯誤碼: ${errorCode})，準備重試...`)
+
+          // 如果還有重試機會，等待後重試
+          if (attempt < MAX_RETRIES - 1) {
+            const delay = RETRY_DELAYS[attempt]
+            console.log(`等待 ${delay/1000} 秒後重試...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+        } else {
+          // 其他錯誤直接返回
+          console.error('Gemini API 錯誤:', errorText)
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'AI 分析失敗',
+              error_code: 'AI_API_ERROR',
+              details: '呼叫 AI 服務時發生錯誤，請稍後再試',
+              technical_details: errorText
+            }),
+            {
+              status: geminiResponse.status,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            }
+          )
+        }
+      } catch (fetchError) {
+        lastError = fetchError.message
+        console.error(`第 ${attempt + 1} 次嘗試失敗:`, fetchError)
+
+        // 如果還有重試機會，等待後重試
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = RETRY_DELAYS[attempt]
+          console.log(`等待 ${delay/1000} 秒後重試...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+      }
+    }
+
+    // 檢查是否所有重試都失敗
+    if (!geminiResponse || !geminiResponse.ok) {
+      console.error('所有重試均失敗，最後錯誤:', lastError)
       return new Response(
         JSON.stringify({
-          error: 'AI 分析失敗',
-          details: errorText
+          success: false,
+          error: 'AI 服務暫時無法使用，請稍後再試',
+          error_code: 'SERVICE_UNAVAILABLE',
+          retry_after: 30, // 建議 30 秒後重試
+          details: `已自動重試 ${MAX_RETRIES} 次，但 AI 模型目前負載過高。請稍後再試，或聯繫管理員。`,
+          technical_details: lastError
         }),
         {
-          status: 500,
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          status: 503,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Retry-After': '30'
+          }
         }
       )
     }
