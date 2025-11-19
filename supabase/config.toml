@@ -121,7 +121,7 @@ file_size_limit = "10MiB"
 [storage.buckets.items]
 public = true
 file_size_limit = "10MiB"
-allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+allowed_mime_types = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
 
 [storage.buckets.avatars]
 public = true
@@ -132,9 +132,9 @@ allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:5174"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://127.0.0.1:5174", "http://localhost:5174"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -290,6 +290,14 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# 【新增 2025-11-02】啟用 Google OAuth 登入
+[auth.external.google]
+enabled = true
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
+# 本地開發必須啟用，跳過 nonce 檢查
+skip_nonce_check = true
+
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]
@@ -338,8 +346,8 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+[edge_runtime.secrets]
+GEMINI_API_KEY = "env(GEMINI_API_KEY)"
 
 [analytics]
 enabled = true
@@ -359,3 +367,14 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+[functions.analyze-item-image]
+enabled = true
+verify_jwt = true
+import_map = "./functions/analyze-item-image/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/analyze-item-image/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/analyze-item-image/*.html" ]
