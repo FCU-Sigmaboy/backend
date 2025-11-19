@@ -2,13 +2,17 @@
 
 > 本文檔記錄了在開發 AI 物品圖片分析功能時遇到的所有問題及解決方案
 >
-> **日期**: 2025-11-02
+> **日期**: 2025-11-02 (初版) | 2025-11-19 (更新)
 > **功能**: AI 自動填寫物品刊登資訊
 
 ---
 
 ## 目錄
 
+### 🚨 Supabase 環境問題
+0. [Edge Runtime 503 錯誤 - 服務未啟動](#0-edge-runtime-503-錯誤---服務未啟動) **[NEW - 2025-11-19]**
+
+### AI 功能開發問題
 1. [CORS 錯誤 - Edge Function 未部署](#1-cors-錯誤---edge-function-未部署)
 2. [Google OAuth 登入失敗](#2-google-oauth-登入失敗)
 3. [Google OAuth Redirect 錯誤](#3-google-oauth-redirect-錯誤)
@@ -22,6 +26,277 @@
 11. [AI 分類未自動選擇](#11-ai-分類未自動選擇)
 12. [位置建立外鍵約束錯誤](#12-位置建立外鍵約束錯誤)
 13. [分類顯示錯誤 - 硬編碼與資料庫不一致](#13-分類顯示錯誤---硬編碼與資料庫不一致)
+
+---
+
+## 0. Edge Runtime 503 錯誤 - 服務未啟動
+
+### 問題描述
+
+呼叫 Edge Function 時出現 503 錯誤：
+
+```
+Failed to load resource: the server responded with a status of 503 (Service Temporarily Unavailable)
+Error: Edge Function returned a non-2xx status code
+```
+
+前端顯示多個圖片上傳成功，但 AI 分析失敗。
+
+### 問題截圖
+
+使用者上傳 8 張圖片，全部顯示：
+- 圖片上傳至 Storage 成功 ✅
+- 開始分析圖片
+- **Edge Function 錯誤: FunctionsHttpError: Edge Function returned a non-2xx status code** ❌
+
+### 根本原因
+
+`supabase_edge_runtime_backend` 服務未正常運行。
+
+執行 `npx supabase status` 時顯示：
+```
+Stopped services: [supabase_edge_runtime_backend supabase_imgproxy_backend supabase_pooler_backend]
+```
+
+常見導致原因：
+1. **Storage 遷移失敗**：Supabase CLI 版本過舊（例如 v2.53.6），缺少新版 Storage 遷移文件
+2. **容器名稱衝突**：先前的容器未正確清理
+3. **Docker 狀態異常**：容器處於 Restarting 或 Unhealthy 狀態
+
+### 診斷方法
+
+#### 步驟 1: 檢查 Supabase 服務狀態
+
+```bash
+npx supabase status
+```
+
+查看 `Stopped services` 列表，如果包含 `supabase_edge_runtime_backend`，代表服務已停止。
+
+#### 步驟 2: 檢查容器運行狀態
+
+```bash
+docker ps --filter "name=supabase" --format "table {{.Names}}\t{{.Status}}"
+```
+
+預期輸出（正常狀態）：
+```
+NAMES                           STATUS
+supabase_edge_runtime_backend   Up X seconds
+supabase_storage_backend        Up X seconds (healthy)
+supabase_db_backend             Up X seconds (healthy)
+...
+```
+
+如果 `supabase_edge_runtime_backend` 不在列表中，或狀態為 `Restarting`/`Exited`，代表有問題。
+
+#### 步驟 3: 查看錯誤日誌
+
+```bash
+# 查看 Edge Runtime 日誌
+docker logs supabase_edge_runtime_backend --tail 50
+
+# 查看 Storage 日誌（如果有遷移錯誤）
+docker logs supabase_storage_backend --tail 50
+```
+
+常見錯誤訊息：
+```
+Migration iceberg-catalog-ids not found
+supabase_storage_backend container is not ready: unhealthy
+```
+
+### 解決方案
+
+#### 🔧 標準修復流程（推薦）
+
+**完整步驟**：
+
+```bash
+# 步驟 1: 停止所有 Supabase 服務
+npx supabase stop
+
+# 步驟 2: 清理所有容器衝突
+# Linux / macOS
+docker ps -a --filter "name=supabase" -q | xargs -r docker rm -f
+
+# Windows PowerShell
+docker ps -a --filter "name=supabase" -q | ForEach-Object { docker rm -f $_ }
+
+# 步驟 3: 使用 beta 版本重新啟動（解決 Storage 遷移問題）
+npx supabase@beta start
+
+# 步驟 4: 驗證服務狀態
+npx supabase status
+docker ps --filter "name=supabase" --format "table {{.Names}}\t{{.Status}}"
+```
+
+#### 📝 一鍵修復腳本
+
+**Linux / macOS:**
+
+建立檔案 `scripts/fix-supabase.sh`：
+
+```bash
+#!/bin/bash
+echo "🔄 停止 Supabase 服務..."
+npx supabase stop
+
+echo "🧹 清理容器..."
+docker ps -a --filter "name=supabase" -q | xargs -r docker rm -f
+
+echo "🚀 重新啟動 Supabase (beta)..."
+npx supabase@beta start
+
+echo "✅ 檢查服務狀態..."
+npx supabase status
+
+echo ""
+echo "📊 容器狀態："
+docker ps --filter "name=supabase" --format "table {{.Names}}\t{{.Status}}"
+```
+
+執行：
+```bash
+chmod +x scripts/fix-supabase.sh
+./scripts/fix-supabase.sh
+```
+
+**Windows PowerShell:**
+
+建立檔案 `scripts/Fix-Supabase.ps1`：
+
+```powershell
+Write-Host "🔄 停止 Supabase 服務..." -ForegroundColor Yellow
+npx supabase stop
+
+Write-Host "🧹 清理容器..." -ForegroundColor Yellow
+docker ps -a --filter "name=supabase" -q | ForEach-Object { docker rm -f $_ }
+
+Write-Host "🚀 重新啟動 Supabase (beta)..." -ForegroundColor Yellow
+npx supabase@beta start
+
+Write-Host "✅ 檢查服務狀態..." -ForegroundColor Green
+npx supabase status
+
+Write-Host ""
+Write-Host "📊 容器狀態：" -ForegroundColor Cyan
+docker ps --filter "name=supabase" --format "table {{.Names}}\t{{.Status}}"
+```
+
+執行：
+```powershell
+.\scripts\Fix-Supabase.ps1
+```
+
+### 驗證修復成功
+
+#### 1. 檢查服務狀態
+
+```bash
+npx supabase status
+```
+
+預期輸出（不應有 Stopped services）：
+```
+API URL: http://127.0.0.1:54321
+...
+Stopped services: []  # 應該是空的
+supabase local development setup is running.
+```
+
+#### 2. 確認 Edge Runtime 正在運行
+
+```bash
+docker ps --filter "name=supabase_edge_runtime" --format "table {{.Names}}\t{{.Status}}"
+```
+
+預期輸出：
+```
+NAMES                           STATUS
+supabase_edge_runtime_backend   Up About a minute
+```
+
+狀態應該是 `Up`，而非 `Restarting` 或 `Exited`。
+
+#### 3. 測試 Edge Function
+
+刷新前端頁面，重新上傳圖片並點擊「AI 自動填寫」，應該能夠成功分析。
+
+### 為什麼使用 `npx supabase@beta start`？
+
+- **解決 Storage 遷移問題**：beta 版本包含最新的 Storage 遷移文件
+- **向後兼容**：beta 版本仍然兼容現有的資料庫和配置
+- **避免 CLI 升級**：不需要全域安裝新版本的 Supabase CLI
+
+### 常見問題
+
+**Q: 為什麼不直接升級 Supabase CLI？**
+
+A: 全域升級可能影響其他專案。使用 `npx supabase@beta` 可以在當前專案使用最新版本，而不影響系統全域設定。
+
+**Q: 每次啟動都需要用 beta 版本嗎？**
+
+A: 是的。建議在專案的 `package.json` 中新增腳本：
+
+```json
+{
+  "scripts": {
+    "supabase:start": "npx supabase@beta start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:status": "npx supabase status"
+  }
+}
+```
+
+**Q: 資料會遺失嗎？**
+
+A: 不會。Supabase 本地資料儲存在 Docker volumes 中：
+```bash
+docker volume ls --filter label=com.supabase.cli.project=backend
+```
+
+除非刪除 volumes，否則資料會保留。
+
+**Q: 如果還是失敗怎麼辦？**
+
+A: 完全重置環境（⚠️ 會刪除所有本地資料）：
+
+```bash
+# 停止服務
+npx supabase stop
+
+# 刪除所有容器
+docker ps -a --filter "name=supabase" -q | xargs -r docker rm -f
+
+# 刪除所有 volumes（資料將被刪除！）
+docker volume ls --filter label=com.supabase.cli.project=backend -q | xargs -r docker volume rm
+
+# 重新啟動
+npx supabase@beta start
+
+# 執行資料庫遷移和種子
+npx supabase db reset
+```
+
+### 相關問題
+
+- [#4 Storage Bucket 不存在](#4-storage-bucket-不存在)
+- [#5 Edge Function 環境變數未載入](#5-edge-function-環境變數未載入)
+
+### 成功案例
+
+**問題回報日期**: 2025-11-19
+
+**問題描述**：使用者上傳 8 張圖片進行 AI 分析，全部出現 503 錯誤。
+
+**解決過程**：
+1. 檢查 `npx supabase status`，發現 `supabase_edge_runtime_backend` 已停止
+2. 嘗試使用 `npx supabase start` 重啟，出現 Storage 遷移錯誤
+3. 清理容器並使用 `npx supabase@beta start`
+4. 所有服務成功啟動，AI 分析恢復正常
+
+**修復時間**: 約 5 分鐘
 
 ---
 
@@ -1209,6 +1484,30 @@ AI 分析圖片
 
 ---
 
-**最後更新**: 2025-11-02
+**最後更新**: 2025-11-19
 **維護者**: FCU-Sigmaboy Team
-**版本**: 1.2.0
+**版本**: 1.3.0
+
+## 更新日誌
+
+### v1.3.0 (2025-11-19)
+- ✨ 新增：Edge Runtime 503 錯誤診斷與修復方案
+- 📝 新增：標準 Supabase 環境修復流程
+- 🔧 新增：一鍵修復腳本（Linux/macOS 和 Windows）
+- 💡 新增：使用 `npx supabase@beta start` 解決 Storage 遷移問題
+- 📚 優化：文檔結構，分類 Supabase 環境問題和 AI 功能問題
+
+### v1.2.0 (2025-11-02)
+- AI 分類自動選擇功能
+- 位置建立外鍵約束問題修復
+- 分類顯示錯誤修復（動態載入分類）
+
+### v1.1.0 (2025-11-02)
+- Google OAuth 設定
+- Edge Function 環境變數配置
+- Docker 網路連線問題
+- Gemini API 整合
+
+### v1.0.0 (2025-11-02)
+- 初版發布
+- 基本 AI 圖片分析功能疑難排解

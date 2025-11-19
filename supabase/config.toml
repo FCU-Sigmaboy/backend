@@ -121,18 +121,12 @@ file_size_limit = "10MiB"
 [storage.buckets.items]
 public = true
 file_size_limit = "10MiB"
-allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+allowed_mime_types = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
 
 [storage.buckets.avatars]
 public = true
 file_size_limit = "5MiB"
 allowed_mime_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-
-# 【新增 2025-11-02】物品圖片儲存桶
-[storage.buckets.items]
-public = true
-file_size_limit = "10MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
 
 [auth]
 enabled = true
