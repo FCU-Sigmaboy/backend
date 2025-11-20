@@ -43,20 +43,31 @@ export async function createOrGetConversation(
 /**
  * 發送訊息
  * @param {number} conversationId - 對話 ID
- * @param {string} content - 訊息內容
- * @param {string} [messageType='text'] - 訊息類型: text, image, system, item_reference
+ * @param {string} content - 訊息內容 (reply 和 transaction_link 類型使用 JSON 格式)
+ * @param {string} [messageType='text'] - 訊息類型: text, image, system, item_reference, reply, transaction_link
  * @param {number} [relatedItemId] - 關聯商品 ID
  * @returns {Promise<Object>} 訊息資訊
  *
  * @example
- * const message = await sendMessage(456, 'Hello!', 'text', 789);
+ * // 發送普通文字訊息
+ * const message = await sendMessage(456, 'Hello!', 'text');
+ *
+ * @example
+ * // 發送回覆訊息 (content 使用 JSON 格式)
+ * const replyMessage = await sendMessage(456, '{"回覆的訊息內容":"howfsr","你的訊息內容":"freomfv","reply_to_message_id":649}', 'reply');
+ *
+ * @example
+ * // 發送交易連結訊息 (content 使用 JSON 格式)
+ * const txMessage = await sendMessage(456, '{"transaction_id":95}', 'transaction_link');
+ *
+ * // 返回格式:
  * // {
  * //   message_id: 1001,
  * //   conversation_id: 456,
  * //   sender_id: 'current-user-uuid',
- * //   content: 'Hello!',
- * //   message_type: 'text',
- * //   related_item_id: 789,
+ * //   content: '{"transaction_id":95}',
+ * //   message_type: 'transaction_link',
+ * //   related_item_id: null,
  * //   created_at: '2024-01-15T10:30:00Z'
  * // }
  */
@@ -140,6 +151,20 @@ export async function getConversations(
  * //     is_mine: false,
  * //     is_read: true,
  * //     created_at: '2024-01-15T10:30:00Z'
+ * //   },
+ * //   {
+ * //     message_id: 790,
+ * //     sender_id: 'uuid-here2',
+ * //     sender_name: '李四',
+ * //     sender_avatar: 'https://...',
+ * //     content: '{"回覆的訊息內容":"請問這個商品還有嗎?","你的訊息內容":"有的","reply_to_message_id":789}',
+ * //     message_type: 'reply',
+ * //     related_item_id: null,
+ * //     related_item_title: null,
+ * //     is_deleted: false,
+ * //     is_mine: true,
+ * //     is_read: false,
+ * //     created_at: '2024-01-15T10:31:00Z'
  * //   }
  * // ]
  */
