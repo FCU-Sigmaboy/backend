@@ -3,8 +3,8 @@
 // ====================================================================
 // 建立日期: 2025-11-02
 // 作者: Claude Code
-// 功能: 使用 Google Gemini 1.5 Flash Vision API 分析物品圖片，提取物品資訊
-// 修改日期: 2025-11-02 (改用 Gemini - 免費方案)
+// 功能: 使用 Google Gemini 2.5 Flash-Lite Vision API 分析物品圖片，提取物品資訊
+// 修改日期: 2025-11-20 (升級為 Gemini 2.5 Flash-Lite - 更快更省)
 // ====================================================================
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
     }
 
     // 6. 呼叫 Google Gemini Vision API（含重試機制）
-    // 使用 gemini-2.5-flash (穩定版本)
+    // 使用 gemini-2.5-flash-lite（低延遲、高性價比版本）
     const MAX_RETRIES = 3
     const RETRY_DELAYS = [2000, 5000, 10000] // 重試延遲：2秒、5秒、10秒
 
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
         console.log(`嘗試呼叫 Gemini API (第 ${attempt + 1}/${MAX_RETRIES} 次)`)
 
         geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: {
@@ -412,7 +412,7 @@ ${categoryList}
         success: true,
         data: analysisResult,
         usage: aiResult.usageMetadata || {},
-        model: 'gemini-1.5-flash'
+        model: 'gemini-2.5-flash-lite'
       }),
       {
         status: 200,

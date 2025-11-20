@@ -4,8 +4,8 @@
 // 建立日期: 2025-11-02
 // 作者: Claude Code
 // 功能: 呼叫 Supabase Edge Function 分析物品圖片
-// AI 模型: Google Gemini 1.5 Flash (免費方案)
-// 修改日期: 2025-11-02 (改用 Gemini)
+// AI 模型: Google Gemini 2.5 Flash-Lite (低延遲、高性價比)
+// 修改日期: 2025-11-20 (升級為 Gemini 2.5 Flash-Lite)
 // ====================================================================
 
 // 注意：前端使用時請改為您的 supabase 引入路徑
@@ -30,7 +30,7 @@ import { supabase } from '../lib/supabase'
  *     warnings: []
  *   },
  *   usage: { promptTokenCount: 100, candidatesTokenCount: 200, totalTokenCount: 300 },
- *   model: "gemini-1.5-flash"
+ *   model: "gemini-2.5-flash-lite"
  * }
  */
 export async function analyzeItemImage(imageUrl) {
