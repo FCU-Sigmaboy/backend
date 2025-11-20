@@ -752,9 +752,9 @@ curl "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_API_KEY"
 **修改檔案**: `supabase/functions/analyze-item-image/index.ts`
 
 ```typescript
-// 使用 gemini-2.5-flash (穩定版本)
+// 使用 gemini-2.5-flash-lite（低延遲、高性價比版本）
 const geminiResponse = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
   {
     method: 'POST',
     headers: {
@@ -767,10 +767,11 @@ const geminiResponse = await fetch(
 )
 ```
 
-### 可用的 Gemini 模型 (2025-11-02)
+### 可用的 Gemini 模型 (2025-11-20)
 
 | 模型名稱 | 版本 | 說明 | 輸入限制 | 輸出限制 |
 |---------|------|------|---------|---------|
+| `gemini-2.5-flash-lite` | 穩定版 | **最低延遲、最高性價比** | 1M tokens | 65K tokens |
 | `gemini-2.5-flash` | 穩定版 | 快速多模態模型 | 1M tokens | 65K tokens |
 | `gemini-2.5-pro` | 穩定版 | 高性能模型 | 1M tokens | 65K tokens |
 | `gemini-2.0-flash` | 穩定版 | 2.0 快速版本 | 1M tokens | 8K tokens |
@@ -778,7 +779,7 @@ const geminiResponse = await fetch(
 
 ### 推薦
 
-使用 `gemini-2.5-flash` - 穩定且免費，支援圖片分析。
+使用 `gemini-2.5-flash-lite` **(本專案已採用)** - 最快、最省錢，支援圖片分析。
 
 ---
 
