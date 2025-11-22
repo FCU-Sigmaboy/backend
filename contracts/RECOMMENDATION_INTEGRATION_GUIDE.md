@@ -1,7 +1,25 @@
 # 推薦系統整合指南
 # Recommendation System Integration Guide
 
+**版本**: v2.0.0  
+**更新日期**: 2025-11-22
+
 本指南說明如何將推薦系統整合到前端應用中。
+
+## 📝 v2.0 更新內容
+
+### 新增功能
+- ✅ 社交推薦 - 追蹤賣家的物品推薦
+- ✅ 高評價賣家推薦 - 基於賣家信譽的推薦
+- ✅ 擴展的推薦數據 - 包含賣家評價數和追蹤狀態
+- ✅ 優化的推薦算法 - 整合評價、交易和社交數據
+
+### API 變更
+- 新增算法選項：`'following'` 和 `'high_rated'`
+- 返回數據新增：`seller_review_count`、`is_following_seller`
+- 推薦原因新增：`'following_seller'`、`'high_rated_seller'`
+
+---
 
 ## 📋 目錄
 
@@ -63,7 +81,7 @@ curl -i --location --request POST 'https://YOUR_PROJECT.supabase.co/functions/v1
 interface RecommendationRequest {
   limit?: number;           // 返回數量，預設 20
   offset?: number;          // 分頁偏移，預設 0
-  algorithm?: 'hybrid' | 'content' | 'collaborative' | 'popular' | 'location';
+  algorithm?: 'hybrid' | 'content' | 'collaborative' | 'popular' | 'location' | 'following' | 'high_rated'; // v2.0 新增
   filter?: {
     main_category_id?: number;
     sub_category_id?: number;
@@ -73,6 +91,15 @@ interface RecommendationRequest {
   };
 }
 ```
+
+**算法類型說明**:
+- `hybrid` - 混合推薦（預設）- 結合多種因素
+- `content` - 基於內容的推薦
+- `collaborative` - 協同過濾推薦
+- `popular` - 熱門物品推薦
+- `location` - 基於地理位置的推薦
+- `following` - 🆕 追蹤賣家的物品推薦
+- `high_rated` - 🆕 高評價賣家的物品推薦
 
 **範例**:
 ```javascript
@@ -91,6 +118,34 @@ if (data?.success) {
   console.log('Recommended items:', data.data.items)
   console.log('Personalization level:', data.data.personalization_level)
 }
+```
+
+**v2.0 新功能範例**:
+```javascript
+// 獲取追蹤賣家的物品
+const { data } = await supabase.functions.invoke('get-recommendations', {
+  body: {
+    algorithm: 'following',
+    limit: 20
+  }
+})
+
+// 獲取高評價賣家的物品
+const { data } = await supabase.functions.invoke('get-recommendations', {
+  body: {
+    algorithm: 'high_rated',
+    limit: 20
+  }
+})
+
+// 檢查推薦結果的新欄位
+data.data.items.forEach(item => {
+  console.log(`物品: ${item.title}`)
+  console.log(`賣家評價數: ${item.seller_review_count}`)  // v2.0 新增
+  console.log(`是否追蹤賣家: ${item.is_following_seller}`)  // v2.0 新增
+  console.log(`推薦原因: ${item.recommendation_reason}`)
+  // 可能的原因: following_seller, high_rated_seller, category_match, etc.
+})
 ```
 
 ### 2. 追蹤用戶互動
@@ -176,9 +231,15 @@ export interface RecommendationItem {
   price: number
   condition: string
   image_urls: string[]
+  tags: string[]
   distance_km?: number
   recommendation_score: number
   recommendation_reason: string
+  seller_id: string
+  seller_nickname: string
+  seller_rating: number
+  seller_review_count: number        // v2.0 新增
+  is_following_seller: boolean       // v2.0 新增
 }
 
 export const recommendationService = {
@@ -187,6 +248,7 @@ export const recommendationService = {
     limit?: number
     offset?: number
     filter?: any
+    algorithm?: 'hybrid' | 'content' | 'collaborative' | 'popular' | 'location' | 'following' | 'high_rated'  // v2.0 擴展
   } = {}): Promise<RecommendationItem[]> {
     const { data, error } = await supabase.functions.invoke('get-recommendations', {
       body: params
@@ -306,9 +368,12 @@ const loadMore = () => {
 
 const getReasonText = (reason: string): string => {
   const reasonMap: Record<string, string> = {
+    following_seller: '您追蹤的賣家',        // v2.0 新增
+    high_rated_seller: '高評價賣家',        // v2.0 新增
     category_match: '類別匹配',
     price_match: '價格合適',
     location_near: '附近物品',
+    condition_match: '狀態匹配',            // v2.0 新增
     popular: '熱門推薦',
     general: '推薦給您'
   }
