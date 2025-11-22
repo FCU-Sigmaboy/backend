@@ -158,7 +158,7 @@ serve(async (req) => {
       if (error) throw error
       recommendedItems = data || []
     } else {
-      // 調用個性化推薦函數（已更新 v2.0）
+      // Call personalized recommendation function (updated v2.0)
       const { data, error } = await supabaseClient.rpc('get_personalized_items', {
         p_user_id: user_id,
         p_limit: limit,

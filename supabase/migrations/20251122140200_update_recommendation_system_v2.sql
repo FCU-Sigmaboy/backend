@@ -110,7 +110,7 @@ BEGIN
             END AS distance_km,
             -- 計算推薦分數（新增多個維度）
             (
-                -- 類別匹配分數 (35分，降低權重以平衡其他因素)
+                -- 類別匹配分數 (35分，從 v1.0 的 40 分降低以平衡其他因素)
                 CASE 
                     WHEN i.sub_category_id = ANY(v_user_preferences.preferred_sub_categories) THEN 35
                     WHEN sc.main_category_id = ANY(v_user_preferences.preferred_main_categories) THEN 18
