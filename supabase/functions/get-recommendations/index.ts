@@ -24,7 +24,7 @@ interface RecommendationRequest {
     max_price?: number
     condition?: string[]
   }
-  algorithm?: 'hybrid' | 'content' | 'collaborative' | 'popular' | 'location'
+  algorithm?: 'hybrid' | 'content' | 'collaborative' | 'popular' | 'location' | 'following' | 'high_rated'
 }
 
 interface RecommendationResponse {
@@ -136,8 +136,29 @@ serve(async (req) => {
       
       if (error) throw error
       recommendedItems = data || []
+    } else if (algorithm === 'following') {
+      // 新增：調用追蹤賣家物品函數
+      const { data, error } = await supabaseClient.rpc('get_following_items', {
+        p_user_id: user_id,
+        p_limit: limit,
+        p_offset: offset
+      })
+      
+      if (error) throw error
+      recommendedItems = data || []
+    } else if (algorithm === 'high_rated') {
+      // 新增：調用高評價賣家物品函數
+      const { data, error } = await supabaseClient.rpc('get_high_rated_seller_items', {
+        p_min_rating: 4.0,
+        p_min_reviews: 3,
+        p_limit: limit,
+        p_offset: offset
+      })
+      
+      if (error) throw error
+      recommendedItems = data || []
     } else {
-      // 調用個性化推薦函數
+      // 調用個性化推薦函數（已更新 v2.0）
       const { data, error } = await supabaseClient.rpc('get_personalized_items', {
         p_user_id: user_id,
         p_limit: limit,
