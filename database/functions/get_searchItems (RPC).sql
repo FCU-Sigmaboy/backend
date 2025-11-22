@@ -4,7 +4,13 @@
 
 -- *** 已更新為使用使用者主要地點計算距離 ***
 -- *** 使用 IF/ELSIF 處理排序，已修正 JOIN ***
+-- *** 修正 42702 歧義錯誤 ***
+-- *** 修正 RETURNS TABLE VARCHAR(50) ***
 
+-- 步驟 1: 刪除舊函式
+-- PostgreSQL 的 CREATE OR REPLACE FUNCTION 語法非常方便，但它有一個嚴格的限制：您不能用它來修改函式的回傳類型（或參數類型）。
+
+DROP FUNCTION public.search_items(INT, INT, INT, TEXT, UUID, INT, INT, TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION public.search_items(
     p_distance_range_km INT DEFAULT NULL,
@@ -17,10 +23,9 @@ CREATE OR REPLACE FUNCTION public.search_items(
     p_sort_by TEXT DEFAULT 'created_at',
     p_sort_direction TEXT DEFAULT 'desc'
 )
--- *** 已加入 favorites_count ***
     RETURNS TABLE (
                       item_id BIGINT,
-                      title TEXT,
+                      title VARCHAR(50),
                       image_url TEXT,
                       price INT,
                       distance_km NUMERIC,
@@ -30,8 +35,9 @@ CREATE OR REPLACE FUNCTION public.search_items(
                       favorites_count BIGINT,
                       "user" JSON
                   )
--- *** 加入 STABLE ***
-    LANGUAGE plpgsql STABLE -- Indicates the function cannot modify the database and always returns the same results for the same arguments within a single transaction.
+    -- LANGUAGE plpgsql STABLE
+    -- *** 關鍵修正：從 STABLE 改為 SECURITY DEFINER ***
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
 AS $$
 DECLARE
     v_current_uid UUID := auth.uid();
@@ -48,133 +54,147 @@ BEGIN
     WHERE user_id = v_current_uid AND is_primary = true
     LIMIT 1;
 
+
+    v_user_primary_location = null;
+
     IF v_user_primary_location IS NULL THEN
-        RAISE NOTICE '找不到使用者的主要地點，距離計算將不可用';
+        RAISE EXCEPTION '找不到使用者的主要地點，距離計算將不可用';
     END IF;
 
     -- 2. 計算 offset
     v_offset := (p_page - 1) * p_size;
 
-    -- 3. 根據排序方向和欄位執行不同的查詢 (避免動態 SQL)
-    --    使用 CTE 預先計算距離和 JOIN
-    --    使用 LEFT JOIN 子查詢計算 favorites_count
+    -- 3. 根據排序方向和欄位執行不同的查詢
+    --    *** 修正：為 favorites 子查詢加上別名 'f' ***
 
     IF LOWER(p_sort_direction) = 'asc' THEN
         IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.distance_km ASC NULLS LAST, iwd.created_at DESC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY distance_km ASC NULLS LAST, i.created_at DESC LIMIT p_size OFFSET v_offset;
 
         ELSIF LOWER(p_sort_by) = 'price' THEN
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.price ASC, iwd.created_at DESC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY i.price ASC, i.created_at DESC LIMIT p_size OFFSET v_offset;
 
         ELSE -- Default to created_at ASC
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.created_at ASC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY i.created_at ASC LIMIT p_size OFFSET v_offset;
         END IF;
 
     ELSE -- DESC (Default)
         IF LOWER(p_sort_by) = 'distance' AND v_user_primary_location IS NOT NULL THEN
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.distance_km DESC NULLS LAST, iwd.created_at DESC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY distance_km DESC NULLS LAST, i.created_at DESC LIMIT p_size OFFSET v_offset;
 
         ELSIF LOWER(p_sort_by) = 'price' THEN
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.price DESC, iwd.created_at DESC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY i.price DESC, i.created_at DESC LIMIT p_size OFFSET v_offset;
 
         ELSE -- Default to created_at DESC
             RETURN QUERY
-                WITH items_with_distance AS (
-                    SELECT
-                        i.*, u.nickname, u.profile_picture_url, sc.main_category_id, l.formatted_address, l.coordinates AS item_coordinates, -- *** 獲取物品座標 ***
-                        ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km -- *** 使用 l.coordinates 計算 ***
-                    FROM public.items i
-                             LEFT JOIN public.users u ON i.user_id = u.id
-                             LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
-                             LEFT JOIN public.locations l ON i.location_id = l.id -- *** 確保 JOIN locations ***
-                    WHERE i.listing_status = TRUE
-                )
-                SELECT iwd.id, iwd.title, iwd.image_urls[1], iwd.price, iwd.distance_km, iwd.formatted_address, iwd.created_at, iwd.updated_at,
-                       COALESCE(fav.count, 0), json_build_object('id', iwd.user_id, 'nickname', iwd.nickname, 'profile_picture_url', iwd.profile_picture_url)
-                FROM items_with_distance iwd
-                         LEFT JOIN (SELECT item_id, count(*) FROM public.favorites GROUP BY item_id) fav ON iwd.id = fav.item_id
-                WHERE (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND iwd.distance_km <= p_distance_range_km)) AND (p_main_category_id IS NULL OR iwd.main_category_id = p_main_category_id) AND (p_sub_category_id IS NULL OR iwd.sub_category_id = p_sub_category_id) AND (p_user_id IS NULL OR iwd.user_id = p_user_id) AND (p_keyword IS NULL OR (iwd.title ILIKE '%' || p_keyword || '%' OR iwd.tags @> ARRAY[p_keyword]))
-                ORDER BY iwd.created_at DESC LIMIT p_size OFFSET v_offset;
+                SELECT
+                    i.id AS item_id, i.title, i.image_urls[1] AS image_url, i.price,
+                    ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) AS distance_km,
+                    l.formatted_address, i.created_at, i.updated_at,
+                    -- *** 修正 42702 ***
+                    (SELECT count(*) FROM public.favorites f WHERE f.item_id = i.id) AS favorites_count,
+                    json_build_object('id', i.user_id, 'nickname', u.nickname, 'profile_picture_url', u.profile_picture_url) AS "user"
+                FROM public.items i
+                         LEFT JOIN public.users u ON i.user_id = u.id
+                         LEFT JOIN public.sub_categories sc ON i.sub_category_id = sc.id
+                         LEFT JOIN public.locations l ON i.location_id = l.id
+                WHERE i.listing_status = TRUE
+                  AND (p_distance_range_km IS NULL OR (v_user_primary_location IS NOT NULL AND ROUND((ST_Distance(l.coordinates, v_user_primary_location) / 1000.0)::numeric, 3) <= p_distance_range_km))
+                  AND (p_main_category_id IS NULL OR sc.main_category_id = p_main_category_id)
+                  AND (p_sub_category_id IS NULL OR i.sub_category_id = p_sub_category_id)
+                  AND (p_user_id IS NULL OR i.user_id = p_user_id)
+                  AND (p_keyword IS NULL OR (i.title ILIKE '%' || p_keyword || '%' OR i.tags @> ARRAY[p_keyword]))
+                ORDER BY i.created_at DESC LIMIT p_size OFFSET v_offset;
         END IF;
     END IF;
 
@@ -185,5 +205,4 @@ $$;
 CREATE INDEX IF NOT EXISTS idx_items_tags ON public.items USING GIN (tags);
 
 -- (其他 RLS 政策和函式保持不變)
--- ... existing policies and other functions ...
 

@@ -79,7 +79,7 @@ bash deploy.sh local
 cd ../frontend
 
 # 複製環境變數範例
-cp .env.example .env
+cp .env.staging.example .env.staging
 ```
 
 **編輯 `.env` 檔案**：
