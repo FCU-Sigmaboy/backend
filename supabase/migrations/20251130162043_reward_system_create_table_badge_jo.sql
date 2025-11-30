@@ -46,7 +46,6 @@ CREATE TABLE public.user_badge_progress (
 );
 
 -- 索引優化
-CREATE INDEX idx_badge_progress_user_id ON public.user_badge_progress(user_id);
 CREATE INDEX idx_badge_progress_percentage ON public.user_badge_progress(percentage DESC);
 
 -- 擴展 profiles 表 (新增統計欄位)
