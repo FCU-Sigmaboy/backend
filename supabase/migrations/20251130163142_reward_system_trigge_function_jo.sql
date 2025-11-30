@@ -54,3 +54,27 @@ CREATE TRIGGER trigger_update_points_earned
     AFTER INSERT ON public.point_logs
     FOR EACH ROW
 EXECUTE FUNCTION update_points_earned_stats();
+
+-- Trigger 3: 交易完成後觸發檢查
+CREATE OR REPLACE FUNCTION trigger_check_badges_after_transaction()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.transaction_status = 'completed' AND
+       (OLD.transaction_status IS NULL OR OLD.transaction_status != 'completed') THEN
+
+        -- 批次檢查並授予徽章 (非同步，不阻塞交易)
+        PERFORM batch_check_and_award_badges(NEW.giver_id);
+        PERFORM batch_check_and_award_badges(NEW.receiver_id);
+
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trigger_badges_after_transaction
+    AFTER UPDATE ON public.transactions
+    FOR EACH ROW
+EXECUTE FUNCTION trigger_check_badges_after_transaction();
