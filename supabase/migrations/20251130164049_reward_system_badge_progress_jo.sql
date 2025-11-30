@@ -49,41 +49,111 @@ BEGIN
         RAISE EXCEPTION '找不到使用者 Profile';
     END IF;
 
-    -- 同步連續簽到進度
-    PERFORM update_badge_progress(p_user_id, badge_id, v_profile.consecutive_login_days)
-    FROM badges WHERE category = 'streak';
+    -- 同步連續簽到進度 (streak)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        v_profile.consecutive_login_days,
+        b.threshold_value
+    FROM badges b
+    WHERE b.category = 'streak'
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步賣家進度
-    PERFORM update_badge_progress(p_user_id, badge_id, v_profile.total_sales_count)
-    FROM badges WHERE category = 'transaction' AND id LIKE 'seller_%';
+    -- 同步賣家進度 (seller)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        v_profile.total_sales_count,
+        b.threshold_value
+    FROM badges b
+    WHERE b.category = 'transaction' AND b.id LIKE 'seller_%'
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步買家進度
-    PERFORM update_badge_progress(p_user_id, badge_id, v_profile.total_purchase_count)
-    FROM badges WHERE category = 'transaction' AND id LIKE 'buyer_%';
+    -- 同步買家進度 (buyer)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        v_profile.total_purchase_count,
+        b.threshold_value
+    FROM badges b
+    WHERE b.category = 'transaction' AND b.id LIKE 'buyer_%'
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步點數累積進度
-    PERFORM update_badge_progress(p_user_id, badge_id, v_profile.total_points_earned)
-    FROM badges WHERE category = 'points';
+    -- 同步點數累積進度 (points)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        v_profile.total_points_earned,
+        b.threshold_value
+    FROM badges b
+    WHERE b.category = 'points'
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步環保進度
-    PERFORM update_badge_progress(p_user_id, badge_id, FLOOR(v_profile.carbon_saved_kg)::INTEGER)
-    FROM badges WHERE category = 'carbon';
+    -- 同步環保進度 (carbon)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        FLOOR(v_profile.carbon_saved_kg)::INTEGER,
+        b.threshold_value
+    FROM badges b
+    WHERE b.category = 'carbon'
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步總交易進度
-    PERFORM update_badge_progress(
-            p_user_id,
-            badge_id,
-            v_profile.total_sales_count + v_profile.total_purchase_count
-            )
-    FROM badges WHERE id IN ('transaction_100', 'transaction_500');
+    -- 同步總交易進度 (transaction_100, transaction_500)
+    INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+    SELECT
+        p_user_id,
+        b.id,
+        v_profile.total_sales_count + v_profile.total_purchase_count,
+        b.threshold_value
+    FROM badges b
+    WHERE b.id IN ('transaction_100', 'transaction_500')
+    ON CONFLICT (user_id, badge_id) DO UPDATE
+        SET current_value = EXCLUDED.current_value,
+            last_updated_at = now();
 
-    -- 同步首次交易進度
+    -- 同步首次交易進度 (first_sale, first_purchase)
     IF v_profile.total_sales_count >= 1 THEN
-        PERFORM update_badge_progress(p_user_id, 'first_sale', 1);
+        INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+        SELECT
+            p_user_id,
+            b.id,
+            1,
+            b.threshold_value
+        FROM badges b
+        WHERE b.id = 'first_sale'
+        ON CONFLICT (user_id, badge_id) DO UPDATE
+            SET current_value = EXCLUDED.current_value,
+                last_updated_at = now();
     END IF;
 
     IF v_profile.total_purchase_count >= 1 THEN
-        PERFORM update_badge_progress(p_user_id, 'first_purchase', 1);
+        INSERT INTO public.user_badge_progress (user_id, badge_id, current_value, target_value)
+        SELECT
+            p_user_id,
+            b.id,
+            1,
+            b.threshold_value
+        FROM badges b
+        WHERE b.id = 'first_purchase'
+        ON CONFLICT (user_id, badge_id) DO UPDATE
+            SET current_value = EXCLUDED.current_value,
+                last_updated_at = now();
     END IF;
 END;
 $$;
