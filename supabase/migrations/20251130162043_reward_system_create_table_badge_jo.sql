@@ -23,7 +23,6 @@ CREATE TABLE public.user_badges (
 );
 
 -- 索引優化
-CREATE INDEX idx_user_badges_user_id ON public.user_badges(user_id);
 CREATE INDEX idx_user_badges_earned_at ON public.user_badges(earned_at DESC);
 
 -- 新增表 3: user_badge_progress (徽章進度追蹤)
