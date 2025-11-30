@@ -43,15 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_badges_category_id_pattern
 -- ============================================
 -- profiles 表的 user_id 應該已經是 PRIMARY KEY
 -- 但確保有複合索引用於統計欄位查詢
-CREATE INDEX IF NOT EXISTS idx_profiles_transaction_stats
-    ON public.profiles(user_id, total_sales_count, total_purchase_count);
-
-CREATE INDEX IF NOT EXISTS idx_profiles_points_stats
-    ON public.profiles(user_id, total_points_earned);
-
-CREATE INDEX IF NOT EXISTS idx_profiles_streak_stats
-    ON public.profiles(user_id, consecutive_login_days);
-
+-- [REMOVED REDUNDANT] CREATE INDEX IF NOT EXISTS idx_profiles_transaction_stats ON public.profiles(user_id, total_sales_count, total_purchase_count);
+-- [REMOVED REDUNDANT] CREATE INDEX IF NOT EXISTS idx_profiles_points_stats ON public.profiles(user_id, total_points_earned);
+-- [REMOVED REDUNDANT] CREATE INDEX IF NOT EXISTS idx_profiles_streak_stats ON public.profiles(user_id, consecutive_login_days);
 -- ============================================
 -- 5. 優化點數記錄查詢
 -- ============================================
