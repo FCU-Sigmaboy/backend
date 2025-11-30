@@ -56,7 +56,7 @@ BEGIN
         b.id,
         v_profile.consecutive_login_days,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.category = 'streak'
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -69,7 +69,7 @@ BEGIN
         b.id,
         v_profile.total_sales_count,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.category = 'transaction' AND b.id LIKE 'seller_%'
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -82,7 +82,7 @@ BEGIN
         b.id,
         v_profile.total_purchase_count,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.category = 'transaction' AND b.id LIKE 'buyer_%'
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -95,7 +95,7 @@ BEGIN
         b.id,
         v_profile.total_points_earned,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.category = 'points'
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -108,7 +108,7 @@ BEGIN
         b.id,
         FLOOR(v_profile.carbon_saved_kg)::INTEGER,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.category = 'carbon'
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -121,7 +121,7 @@ BEGIN
         b.id,
         v_profile.total_sales_count + v_profile.total_purchase_count,
         b.threshold_value
-    FROM badges b
+    FROM public.badges b
     WHERE b.id IN ('transaction_100', 'transaction_500')
     ON CONFLICT (user_id, badge_id) DO UPDATE
         SET current_value = EXCLUDED.current_value,
@@ -135,7 +135,7 @@ BEGIN
             b.id,
             1,
             b.threshold_value
-        FROM badges b
+        FROM public.badges b
         WHERE b.id = 'first_sale'
         ON CONFLICT (user_id, badge_id) DO UPDATE
             SET current_value = EXCLUDED.current_value,
@@ -149,7 +149,7 @@ BEGIN
             b.id,
             1,
             b.threshold_value
-        FROM badges b
+        FROM public.badges b
         WHERE b.id = 'first_purchase'
         ON CONFLICT (user_id, badge_id) DO UPDATE
             SET current_value = EXCLUDED.current_value,
