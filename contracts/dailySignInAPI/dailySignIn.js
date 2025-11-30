@@ -143,7 +143,7 @@ export async function dailySignIn() {
  *       });
  *     }
  *   } else {
- *     console.log(result.message); // "���今天已經簽到過了"
+ *     console.log(result.message); // "您今天已經簽到過了"
  *   }
  * } catch (error) {
  *   console.error('簽到失敗:', error.message);
