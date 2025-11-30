@@ -149,7 +149,7 @@ BEGIN
             b.id,
             1,
             b.threshold_value
-        FROM badges b
+        FROM public.badges b
         WHERE b.id = 'first_purchase'
         ON CONFLICT (user_id, badge_id) DO UPDATE
             SET current_value = EXCLUDED.current_value,
