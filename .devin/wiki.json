@@ -1,0 +1,258 @@
+{
+  "repo_notes": [
+    {
+      "content": "請使用台灣中文（繁體中文）撰寫所有文檔內容。技術術語可保留英文原文，但需在首次出現時提供中文說明。代碼示例、API 名稱、函數名稱、參數名稱等技術標識符保持英文不變。文檔風格應專業、清晰，適合技術開發人員閱讀。"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce the FCU-Sigma backend system, explaining its purpose as a second-hand marketplace platform with sustainability tracking, gamification, and real-time communication features",
+      "page_notes": [
+        {
+          "content": "使用台灣中文介紹 FCU-Sigma 後端系統的核心目標和主要功能模組，包括二手物品交易平台、永續性追蹤、遊戲化機制和即時通訊功能。"
+        }
+      ]
+    },
+    {
+      "title": "System Architecture",
+      "purpose": "Describe the high-level architecture including Supabase platform components, database layer, RPC function organization, external service integrations (Google OAuth, Gemini API), and real-time capabilities",
+      "page_notes": [
+        {
+          "content": "使用台灣中文描述系統架構，包括 Supabase 平台組件、資料庫層、RPC 函數組織方式、外部服務整合（Google OAuth、Gemini API）以及即時功能實作方式。"
+        }
+      ]
+    },
+    {
+      "title": "Database Schema",
+      "purpose": "Document the complete database schema including all tables, relationships, indexes, constraints, and the rationale for key design decisions",
+      "page_notes": [
+        {
+          "content": "使用台灣中文記錄完整的資料庫結構定義，包括所有資料表、關聯關係、索引、約束條件，並說明關鍵設計決策的理由。資料表名稱和欄位名稱保持英文。"
+        }
+      ]
+    },
+    {
+      "title": "Item Marketplace",
+      "purpose": "Overview of the item marketplace features including search, listing, categorization, and carbon footprint tracking",
+      "page_notes": [
+        {
+          "content": "使用台灣中文概述物品交易市場的功能，包括搜尋、刊登、分類管理和碳足跡追蹤機制。"
+        }
+      ]
+    },
+    {
+      "title": "Item Search & Discovery",
+      "purpose": "Deep dive into the search_items RPC function, including distance-based filtering with PostGIS, keyword search, category filtering, pagination, sorting, and approximate location handling for privacy",
+      "parent": "Item Marketplace",
+      "page_notes": [
+        {
+          "content": "使用台灣中文深入說明 search_items RPC 函數的實作細節，包括 PostGIS 距離篩選、關鍵字搜尋、分類篩選、分頁機制、排序邏輯，以及為保護隱私而使用的近似位置處理方式。"
+        }
+      ]
+    },
+    {
+      "title": "AI-Powered Item Listing",
+      "purpose": "Explain the analyze-item-image Edge Function, Google Gemini integration, image analysis workflow, category prediction, carbon footprint estimation, and error handling strategies",
+      "parent": "Item Marketplace",
+      "page_notes": [
+        {
+          "content": "使用台灣中文說明 analyze-item-image Edge Function 的運作方式，包括 Google Gemini 整合、圖片分析流程、分類預測、碳足跡估算邏輯，以及錯誤處理策略。"
+        }
+      ]
+    },
+    {
+      "title": "Categories & Carbon Tracking",
+      "purpose": "Document the two-tier category system (main_categories and sub_categories), default carbon values for each category, and how carbon footprint is tracked throughout the platform",
+      "parent": "Item Marketplace",
+      "page_notes": [
+        {
+          "content": "使用台灣中文記錄二層分類系統（main_categories 和 sub_categories）的設計、各分類的預設碳排放值，以及平台如何追蹤碳足跡數據。"
+        }
+      ]
+    },
+    {
+      "title": "Transaction System",
+      "purpose": "Comprehensive guide to the transaction lifecycle: initiation with code generation, buyer confirmation with point escrow, physical meetup, finalization with code verification, point transfer, carbon credit awarding, and cancellation flows",
+      "page_notes": [
+        {
+          "content": "使用台灣中文完整說明交易生命週期，包括交易發起與代碼生成、買家確認與點數託管、實體面交、代碼驗證與交易完成、點數轉移、碳權獎勵發放，以及取消交易的處理流程。"
+        }
+      ]
+    },
+    {
+      "title": "Messaging & Communication",
+      "purpose": "Overview of the messaging infrastructure including conversation management, message types, real-time delivery, and read receipts",
+      "page_notes": [
+        {
+          "content": "使用台灣中文概述訊息系統架構，包括對話管理、訊息類型、即時傳送機制和已讀回執功能。"
+        }
+      ]
+    },
+    {
+      "title": "Message Types & Structure",
+      "purpose": "Detail the v2 messaging system's message types (text, image, system, item_reference, reply, transaction_link), JSON content formats, and the send_message_v2 RPC function",
+      "parent": "Messaging & Communication",
+      "page_notes": [
+        {
+          "content": "使用台灣中文詳細說明 v2 訊息系統的訊息類型（text、image、system、item_reference、reply、transaction_link）、JSON 內容格式結構，以及 send_message_v2 RPC 函數的使用方式。"
+        }
+      ]
+    },
+    {
+      "title": "Real-time Conversations",
+      "purpose": "Explain the conversation API including startChat UPSERT pattern, batch operations for performance, soft deletion (unilateral for conversations, bilateral for messages), and Supabase Realtime integration",
+      "parent": "Messaging & Communication",
+      "page_notes": [
+        {
+          "content": "使用台灣中文說明對話 API 的設計，包括 startChat 的 UPSERT 模式、批次操作效能優化、軟刪除機制（對話採單方刪除、訊息採雙方刪除），以及 Supabase Realtime 整合方式。"
+        }
+      ]
+    },
+    {
+      "title": "User Management",
+      "purpose": "Overview of user-related functionality including profiles, authentication, location management, and social features",
+      "page_notes": [
+        {
+          "content": "使用台灣中文概述使用者相關功能，包括個人檔案管理、身份驗證、位置管理和社交功能。"
+        }
+      ]
+    },
+    {
+      "title": "User Profiles & Following",
+      "purpose": "Document the get_public_user_profile RPC, profile data structure, following/follower relationships, average ratings, carbon savings tracking, and the evolution from basic profiles to personalized views with followed_at timestamps",
+      "parent": "User Management",
+      "page_notes": [
+        {
+          "content": "使用台灣中文記錄 get_public_user_profile RPC 的功能、個人檔案資料結構、追蹤/粉絲關係、平均評分計算、碳足跡節省追蹤，以及從基本檔案演進到包含 followed_at 時間戳記的個人化視圖。"
+        }
+      ]
+    },
+    {
+      "title": "Location Management & Privacy",
+      "purpose": "Explain location constraints (max one home and one company per user), primary location enforcement, the handle_new_user trigger for OAuth users, item location reassignment during cleanup, and privacy via approximate locations in search results",
+      "parent": "User Management",
+      "page_notes": [
+        {
+          "content": "使用台灣中文說明位置管理的約束條件（每位使用者最多一個家庭和一個公司地點）、主要位置強制規則、handle_new_user 觸發器對 OAuth 使用者的處理、物品位置在清理時的重新分配邏輯，以及透過近似位置保護搜尋結果的隱私設計。"
+        }
+      ]
+    },
+    {
+      "title": "Gamification & Engagement",
+      "purpose": "Overview of engagement features including badges, daily check-ins, streak tracking, and the points economy",
+      "page_notes": [
+        {
+          "content": "使用台灣中文概述使用者參與機制，包括徽章系統、每日簽到、連續簽到追蹤和點數經濟系統。"
+        }
+      ]
+    },
+    {
+      "title": "Badge & Reward System",
+      "purpose": "Deep dive into badge categories (streak, transaction, points, carbon), the sync_all_badge_progress RPC for updating progress from profile metrics, batch_check_and_award_badges for automatic detection, and point rewards distribution",
+      "parent": "Gamification & Engagement",
+      "page_notes": [
+        {
+          "content": "使用台灣中文深入說明徽章分類（連續簽到、交易、點數、碳足跡）、sync_all_badge_progress RPC 如何從個人檔案指標更新進度、batch_check_and_award_badges 的自動偵測機制，以及點數獎勵發放邏輯。"
+        }
+      ]
+    },
+    {
+      "title": "Daily Check-In & Streaks",
+      "purpose": "Document the daily_check_in RPC, streak calculation logic with timezone handling (Asia/Taipei), milestone rewards (3/7/14/30/100 days), point distribution, and integration with badge system",
+      "parent": "Gamification & Engagement",
+      "page_notes": [
+        {
+          "content": "使用台灣中文記錄 daily_check_in RPC 的運作方式、包含時區處理（Asia/Taipei）的連續簽到計算邏輯、里程碑獎勵（3/7/14/30/100 天）、點數發放規則，以及與徽章系統的整合方式。"
+        }
+      ]
+    },
+    {
+      "title": "Security & Access Control",
+      "purpose": "Comprehensive guide to the security architecture including Row Level Security policies for users/profiles/locations/conversations/messages, SECURITY DEFINER RPC pattern, authentication flows with Google OAuth, and critical security issues (balance update protection)",
+      "page_notes": [
+        {
+          "content": "使用台灣中文完整說明安全架構，包括針對 users/profiles/locations/conversations/messages 的 Row Level Security 政策、SECURITY DEFINER RPC 模式、Google OAuth 身份驗證流程，以及關鍵安全議題（如餘額更新保護機制）。"
+        }
+      ]
+    },
+    {
+      "title": "API Reference",
+      "purpose": "Complete reference for all RPC functions including parameters, return types, error codes, usage examples, and client-side JavaScript API wrappers",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供所有 RPC 函數的完整參考文檔，包括參數說明、回傳類型、錯誤代碼、使用範例，以及客戶端 JavaScript API 包裝器的使用方式。函數名稱和參數名稱保持英文。"
+        }
+      ]
+    },
+    {
+      "title": "Search & Discovery APIs",
+      "purpose": "API reference for search_items and related functions including all parameter variations, filtering options, and return data structures",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供 search_items 及相關函數的 API 參考文檔，包括所有參數變化、篩選選項和回傳資料結構說明。"
+        }
+      ]
+    },
+    {
+      "title": "Transaction APIs",
+      "purpose": "API reference for transaction RPCs: initiate_transaction, buyer_confirm_transaction, finalize_transaction_with_code, cancel_transaction, update_giver_note, get_my_transactions_by_status",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供交易相關 RPC 的 API 參考文檔：initiate_transaction、buyer_confirm_transaction、finalize_transaction_with_code、cancel_transaction、update_giver_note、get_my_transactions_by_status。"
+        }
+      ]
+    },
+    {
+      "title": "Messaging APIs",
+      "purpose": "API reference for messaging functions: send_message_v2, startChat/startChatSafe, getConversationMessages, markMessagesAsRead, deleteConversation/restoreConversation, deleteMessage",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供訊息功能的 API 參考文檔：send_message_v2、startChat/startChatSafe、getConversationMessages、markMessagesAsRead、deleteConversation/restoreConversation、deleteMessage。"
+        }
+      ]
+    },
+    {
+      "title": "User & Profile APIs",
+      "purpose": "API reference for user-related functions: get_public_user_profile, update_my_profile, and profile data access patterns",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供使用者相關函數的 API 參考文檔：get_public_user_profile、update_my_profile，以及個人檔案資料存取模式說明。"
+        }
+      ]
+    },
+    {
+      "title": "Gamification APIs",
+      "purpose": "API reference for gamification functions: daily_check_in, update_badge_progress, sync_all_badge_progress, batch_check_and_award_badges, getUserBadgesWithProgress",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供遊戲化功能的 API 參考文檔：daily_check_in、update_badge_progress、sync_all_badge_progress、batch_check_and_award_badges、getUserBadgesWithProgress。"
+        }
+      ]
+    },
+    {
+      "title": "AI Analysis APIs",
+      "purpose": "API reference for the analyze-item-image Edge Function including request/response formats, error handling, and client-side wrapper usage",
+      "parent": "API Reference",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供 analyze-item-image Edge Function 的 API 參考文檔，包括請求/回應格式、錯誤處理方式，以及客戶端包裝器的使用說明。"
+        }
+      ]
+    },
+    {
+      "title": "Development Guide",
+      "purpose": "Practical guide for developers including local setup with Supabase CLI, environment configuration, Docker networking for Edge Functions, migration management, testing strategies, and troubleshooting common issues",
+      "page_notes": [
+        {
+          "content": "使用台灣中文提供開發人員實用指南，包括使用 Supabase CLI 進行本地設定、環境變數配置、Edge Functions 的 Docker 網路設定、遷移管理、測試策略，以及常見問題排解方法。"
+        }
+      ]
+    }
+  ]
+}
